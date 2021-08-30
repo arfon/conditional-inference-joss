@@ -120,7 +120,12 @@ class ModelBase:
     ]
 
     def __init__(
-        self, mean: Numeric1DArray, cov: np.ndarray, *args: Any, seed: int = 0, **kwargs: Any
+        self,
+        mean: Numeric1DArray,
+        cov: np.ndarray,
+        *args: Any,
+        seed: int = 0,
+        **kwargs: Any,
     ):
         self.data = ConventionalEstimatesData(mean, cov, *args, **kwargs)
         self.seed = seed
@@ -362,7 +367,6 @@ class ResultsBase:
         xname: Sequence[str] = None,
         title: str = None,
         alpha: float = 0.05,
-        params_header: List[str] = None,
     ) -> Summary:
         """Create a summary table.
 
@@ -373,7 +377,6 @@ class ResultsBase:
             title (str, optional): Table title. Defaults to None.
             alpha (float, optional): Display 1-alpha confidence interval. Defaults to
                 0.05.
-            params_header (List[str], optional): Table header. Defaults to None.
 
         Returns:
             Summary: Summary table.
@@ -384,13 +387,7 @@ class ResultsBase:
         if not hasattr(self, "pvalues"):
             raise AttributeError("Results object does not have `pvalues` attribute.")
 
-        if params_header is None:
-            params_header = [
-                "coef",
-                "pvalue",
-                f"[{alpha/2}",
-                f"{1-alpha/2}]",
-            ]
+        params_header = self._make_summary_header(alpha)
         params_data = np.hstack(
             (np.array([self.params, self.pvalues]).T, self.conf_int(alpha))  # type: ignore, pylint: disable=no-member
         )
@@ -451,3 +448,8 @@ class ResultsBase:
         ]
 
         return smry
+
+    def _make_summary_header(self, alpha: float) -> List[str]:
+        # make the header for the summary table
+        # when subclassing ResultsBase, you may wish to overwrite this method
+        return ["coef", "pvalue", f"[{alpha/2}", f"{1-alpha/2}]"]

@@ -364,7 +364,7 @@ class quantile_unbiased(rv_continuous):  # pylint: disable=invalid-name
                 if clipped_interval[0] < clipped_interval[1]:
                     interval = (
                         normalize(clipped_interval[0], x_i),
-                        normalize(clipped_interval[1], x_i)
+                        normalize(clipped_interval[1], x_i),
                     )
                     intersection.append(interval)
 

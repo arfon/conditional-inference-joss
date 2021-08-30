@@ -490,38 +490,13 @@ class ProjectionResults(ResultsBase):
             ]
         ).T[self.indices[indices.argsort()]]
 
-    def summary(
-        self,
-        yname: str = None,
-        xname: Sequence[str] = None,
-        title: str = None,
-        alpha: float = 0.05,
-        params_header: List[str] = None,
-    ) -> Summary:
-        """Create a summary table.
-
-        Args:
-            yname (str, optional): Name of the endogenous variable. Defaults to None.
-            xname (Sequence[str], optional): Names of the exogenous variables. Defaults
-                to None.
-            title (str, optional): Table title. Defaults to None.
-            alpha (float, optional): Display 1-alpha confidence interval. Defaults to
-                0.05.
-            params_header (List[str], optional): Table header. Defaults to None.
-
-        Returns:
-            Summary: Summary table.
-        """
-        if params_header is None:
-            params_header = [
-                "coef (conventional)",
-                "pvalue",
-                f"{1-alpha} CI lower",
-                f"{1-alpha} CI upper",
-            ]
-        return super().summary(
-            yname, xname, title=title, alpha=alpha, params_header=params_header
-        )
+    def _make_summary_header(self, alpha: float) -> List[str]:
+        return [
+            "coef (conventional)",
+            "pvalue",
+            f"{1-alpha} CI lower",
+            f"{1-alpha} CI upper",
+        ]
 
 
 class RQUResults(ResultsBase):
@@ -607,35 +582,5 @@ class RQUResults(ResultsBase):
         alpha = (alpha - self.beta) / (1 - self.beta)
         return super().conf_int(alpha, cols)
 
-    def summary(
-        self,
-        yname: str = None,
-        xname: Sequence[str] = None,
-        title: str = None,
-        alpha: float = 0.05,
-        params_header: List[str] = None,
-    ) -> Summary:
-        """Create a summary table.
-
-        Args:
-            yname (str, optional): Name of the endogenous variable. Defaults to None.
-            xname (Sequence[str], optional): Names of the exogenous variables. Defaults
-                to None.
-            title (str, optional): Table title. Defaults to None.
-            alpha (float, optional): Display 1-alpha confidence interval. Defaults to
-                0.05.
-            params_header (List[str], optional): Table header. Defaults to None.
-
-        Returns:
-            Summary: Summary table.
-        """
-        if params_header is None:
-            params_header = [
-                "coef (median)",
-                "pvalue",
-                f"[{alpha/2}",
-                f"{1-alpha/2}]",
-            ]
-        return super().summary(
-            yname, xname, title=title, alpha=alpha, params_header=params_header
-        )
+    def _make_summary_header(self, alpha: float) -> List[str]:
+        return ["coef (median)", "pvalue", f"[{alpha/2}", f"{1-alpha/2}]"]

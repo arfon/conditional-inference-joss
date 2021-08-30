@@ -106,7 +106,7 @@ class BayesResults(ResultsBase):
         title: str = "Bayesian estimates",
     ):
         super().__init__(model, cols, title)
-        
+
         self.params = params[self.indices]
         self.cov_params = cov_params[self.indices][:, self.indices]
         self.distributions = [
@@ -120,8 +120,9 @@ class BayesResults(ResultsBase):
             self.multivariate_distribution = multivariate_normal(
                 self.params, self.cov_params
             )
-            self.posterior_mean_rvs = self.multivariate_distribution\
-                .rvs(n_samples, random_state=seed)
+            self.posterior_mean_rvs = self.multivariate_distribution.rvs(
+                n_samples, random_state=seed
+            )
             self.rank_matrix = self._compute_rank_matrix()
         except np.linalg.LinAlgError:
             # the policy effects are perfectly correlated
