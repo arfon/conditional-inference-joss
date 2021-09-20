@@ -60,3 +60,10 @@ class TestResults:
 
     def test_reconstruction_point_plot(self, results):
         results.reconstruction_point_plot()
+
+
+def test_prior_mean_rvs(size=10):
+    # TODO: test with estimate_prior_params keyword arguments
+    model = LinearEmpiricalBayes(mean, cov)
+    assert model.prior_mean_rvs().shape == (n_policies,)
+    assert model.prior_mean_rvs(size).shape == (n_policies, size)

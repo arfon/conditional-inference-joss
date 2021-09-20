@@ -8,6 +8,7 @@ from typing import Any, Dict, Tuple, Union
 
 import numpy as np
 from scipy.optimize import minimize_scalar
+from scipy.stats import multivariate_normal
 
 from ..base import ColumnsType, Numeric1DArray
 from .base import BayesModelBase, BayesResults
@@ -327,6 +328,26 @@ class LinearEmpiricalBayes(EmpiricalBayesBase):
         prior_mean_params = self._estimate_prior_mean_params(prior_cov)
 
         return prior_mean_params, prior_cov_params
+
+    def prior_mean_rvs(self, size: int = 1) -> np.ndarray:
+        """Sample from the distribution of prior means.
+
+        Args:
+            size (int, optional): Number of samples to draw. Defaults to 1.
+
+        Returns:
+            np.ndarray: (size, n) array of prior mean samples.
+        """
+        # TODO: incorporate estimate_prior_params keyword arguments
+        # possibly pass in a prior_cov parameter to be consistent with heirarchical Bayes
+        _, prior_cov_params = self.estimate_prior_params()
+        prior_cov = self.estimate_prior_cov(prior_cov_params)
+        X_T = self.X.T
+        tau_inv = np.linalg.inv(prior_cov + self.cov)
+        XT_tauinv_X_inv = np.linalg.inv(X_T @ tau_inv @ self.X)
+        beta_bar = XT_tauinv_X_inv @ X_T @ tau_inv @ self.mean
+        beta = multivariate_normal.rvs(beta_bar, XT_tauinv_X_inv, size=size)
+        return (self.X @ beta.reshape(1, -1)).squeeze()
 
     def _estimate_prior_mean_params(self, prior_cov: np.ndarray) -> np.ndarray:
         """Estimate prior mean parameter vector.

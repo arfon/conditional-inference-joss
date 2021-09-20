@@ -236,10 +236,10 @@ class LinearHierarchicalBayes(HierarchicalBayesBase):
         """
         X_T = self.X.T
         tau_inv = np.linalg.inv(prior_cov + self.cov)
-        XT_tauinv_X = X_T @ tau_inv @ self.X
-        beta_bar = np.linalg.inv(XT_tauinv_X) @ X_T @ tau_inv @ self.mean
-        beta = multivariate_normal.rvs(beta_bar, np.linalg.inv(XT_tauinv_X), size=size)
-        return (self.X @ beta.reshape(-1, 1)).squeeze()
+        XT_tauinv_X_inv = np.linalg.inv(X_T @ tau_inv @ self.X)
+        beta_bar = XT_tauinv_X_inv @ X_T @ tau_inv @ self.mean
+        beta = multivariate_normal.rvs(beta_bar, XT_tauinv_X_inv, size=size)
+        return (self.X @ beta.reshape(1, -1)).squeeze()
 
     def _scaled_log_likelihood(self, prior_cov: np.ndarray) -> float:
         # compute the scaled log likelihood; see HierarchicalBayesBase
