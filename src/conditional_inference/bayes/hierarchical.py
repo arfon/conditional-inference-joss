@@ -23,7 +23,7 @@ class Distribution(Protocol):
 class HierarchicalBayesBase(BayesModelBase):
     """Mixin for hierarchical Bayesian models.
 
-    Inherits from :class:`conditional_inference.bayes.BayesModelBase`.
+    Inherits from :class:`conditional_inference.bayes.base.BayesModelBase`.
 
     Assumes a known distribution of prior covariance parameters.
 
@@ -39,9 +39,6 @@ class HierarchicalBayesBase(BayesModelBase):
     Attributes:
         prior_cov_params_distribution (Distribution): Distribution of prior covariance
             parameters.
-
-    Notes:
-        This class also contains the attributes of ``BayesModelBase``.
     """
 
     def __init__(
@@ -258,7 +255,9 @@ class LinearHierarchicalBayes(HierarchicalBayesBase):
 
 
 class HierarchicalBayesResults(BayesResults):
-    """Results from hierarchical Bayesian analysis. Inherits from
+    """Results from hierarchical Bayesian analysis.
+
+    Inherits from
     :class:`conditional_inference.bayes.base.BayesResults`.
 
     Args:
@@ -270,9 +269,6 @@ class HierarchicalBayesResults(BayesResults):
             Defaults to None.
         title (str, optional): Results title. Defaults to
             "Hierarchical Bayes results".
-
-    Notes:
-        The attributes are identical to those of ``BayesResultsBase``.
     """
 
     def __init__(

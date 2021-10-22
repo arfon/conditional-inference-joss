@@ -11,17 +11,15 @@ from conditional_inference.bayes.classic import LinearClassicBayes
 from conditional_inference.rqu import RQU
 
 RESULTS_DIR = "results"
-DATA_FILE = "data.csv"
-
 CONVENTIONAL = "conventional"
 CONDITIONAL = "conditional"
 HYBRID = "hybrid"
 PROJECTION = "projection"
 
 
-def run_simulation(estimator):
-    df = pd.read_csv(DATA_FILE)
-    true_mean, cov = df.iloc[:, 0].values, df.iloc[:, 1:].values
+def run_simulation(estimator, data_file):
+    df = pd.read_csv(data_file)
+    true_mean, cov = df.values[:, 0], df.values[:, 1:]
     estimated_mean = multivariate_normal(true_mean, cov).rvs()
     argsort = estimated_mean.argsort()
     true_mean, estimated_mean, cov = (
@@ -50,14 +48,17 @@ def run_simulation(estimator):
 
 
 if __name__ == "__main__":
-    sim_no, estimator = int(sys.argv[1]), sys.argv[2]
+    sim_no, estimator, data_file = sys.argv[1:]
+    sim_no = int(sim_no)
+    data_file_stub = data_file[:-len(".csv")]
     np.random.seed(sim_no)
 
-    df = pd.DataFrame(run_simulation(estimator))
+    df = pd.DataFrame(run_simulation(estimator, data_file))
     df["sim_no"] = sim_no
     df["estimator"] = estimator
+    df["data_file"] = data_file_stub
 
     if not os.path.exists(RESULTS_DIR):
         os.mkdir(RESULTS_DIR)
-    filename = os.path.join(RESULTS_DIR, f"results_{estimator}_{sim_no}.csv")
+    filename = os.path.join(RESULTS_DIR, f"results_{sim_no}_{estimator}_{data_file_stub}.csv")
     df.to_csv(filename, index=False)

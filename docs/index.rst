@@ -21,6 +21,7 @@ A statistics package for comparing multiple policies or treatments.
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
    :target: https://github.com/psf/black
 
+|
 Quickstart
 ==========
 
@@ -31,11 +32,12 @@ Use the following binder for quantile-unbiased analysis.
 .. image:: https://mybinder.org/badge_logo.svg
    :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/rqu.ipynb
 
-Use the following binder for Bayesian analysis.
+| Use the following binder for Bayesian analysis.
 
 .. image:: https://mybinder.org/badge_logo.svg
    :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/bayes.ipynb
 
+|
 Installation
 ============
 
@@ -43,33 +45,13 @@ Installation
 
    $ pip install conditional-inference
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Base classes and utilities
-   
-   Base classes <base>
-   Distributions <stats>
-   Utilities <utils>
+Contents
+========
 
 .. toctree::
    :maxdepth: 2
-   :caption: Quantile unbiased inference
 
-   Quantile-unbiased estimator <rqu>
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Bayesian inference
-
-   Base classes <bayes.base>
-   Classic <bayes.classic>
-   Empirical <bayes.empirical>
-   Hierarchical <bayes.hierarchical>
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Info
-
+   conditional_inference/index
    Changelog <changelog>
 
 Indices and tables

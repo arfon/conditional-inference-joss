@@ -90,9 +90,6 @@ class BayesResults(ResultsBase):
             posterior.
         rank_matrix (pd.DataFrame): (n, n) dataframe of probabilities that column i has
             rank j.
-
-    Notes:
-        This class also contains the attributes of ``ResultsBase``.
     """
 
     def __init__(
@@ -175,8 +172,8 @@ class BayesResults(ResultsBase):
         Returns:
             float: Expected Wasserstein distance.
 
-        Notes:
-            `mean` and `cov` are taken to be the mean and covariance used to fit the
+        Note:
+            ``mean`` and ``cov`` are taken to be the mean and covariance used to fit the
             model by default, giving you the in-sample Wasserstein distance.
         """
 
@@ -207,8 +204,8 @@ class BayesResults(ResultsBase):
         Returns:
             float: Likelihood.
 
-        Notes:
-            `mean` and `cov` are taken to be the mean and covariance used to fit the
+        Note:
+            ``mean`` and ``cov`` are taken to be the mean and covariance used to fit the
             model by default, giving you the in-sample likelihood.
         """
         mean = self.model.mean[self.indices] if mean is None else mean

@@ -52,7 +52,7 @@ class EmpiricalBayesBase(BayesModelBase):
         Returns:
             np.ndarray: (n, n) posterior covariance matrix.
 
-        Notes:
+        Note:
             This approximation uses a plug-in estimator which likely underestimates the
             posterior covariance.
         """
@@ -175,11 +175,10 @@ class LinearEmpiricalBayes(EmpiricalBayesBase):
         max_prior_cov (float, optional): Maximum prior covariance. The prior covariance
             is assumed to be proportional to the identity matrix. Defaults to 1e6.
 
-    Notes:
-        This class' attributes are identical to those of :class:`EmpiricalBayesBase`.
-        Note that the estimated posterior covariance matrix doesn't account for
-        uncertainty in the estimated prior covariance parameter, and therefore may
-        underestimate the posterior covariance.
+    Note:
+        The estimated posterior covariance matrix doesn't account for uncertainty in the
+        estimated prior covariance parameter, and therefore may underestimate the
+        posterior covariance.
 
     Examples:
 
@@ -291,7 +290,7 @@ class LinearEmpiricalBayes(EmpiricalBayesBase):
             Tuple[PriorParams, PriorParams]: Parameters of the prior
                 distribution.
 
-        Notes:
+        Note:
             The likelihood method estimates the prior covariance parameter by maximum
             likelihood. The Wasserstein method estimates the prior covariance parameter
             by minimizing the Wasserstein distance. Likelihood is generally preferable,
@@ -390,9 +389,11 @@ class LinearEmpiricalBayes(EmpiricalBayesBase):
 
 
 class JamesStein(EmpiricalBayesBase):
-    """James-Stein estimator. Inherits from :class:`EmpiricalBayesBase`.
+    """James-Stein estimator.
 
-    Notes:
+    Inherits from :class:`EmpiricalBayesBase`.
+
+    Note:
         This estimator is most appropriate when the sample covariance matrix is
         proportional to the identity matrix.
 

@@ -44,7 +44,7 @@ class truncnorm(rv_continuous):  # pylint: disable=invalid-name
         n_samples (int): Number of samples to draw for approximation. Defaults to
             10000.
 
-    Notes:
+    Note:
         The truncation set is defined over the domain of the standard normal. To
         convert the truncation set for a specific mean and standard deviation, use:
 

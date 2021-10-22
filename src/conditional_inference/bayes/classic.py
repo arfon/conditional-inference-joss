@@ -30,9 +30,6 @@ class ClassicBayesBase(BayesModelBase):
 
     Attributes:
         prior_cov (np.ndarray): (n, n) prior covariance matrix.
-
-    Notes:
-        This class also contains the attributes of ``BayesModelBase``.
     """
 
     def __init__(
@@ -129,7 +126,9 @@ class ClassicBayesBase(BayesModelBase):
 
 
 class LinearClassicBayes(ClassicBayesBase):
-    """Classic linear Bayesian model. Inherits from :class:`ClassicBayesBase`.
+    """Classic linear Bayesian model.
+
+    Inherits from :class:`ClassicBayesBase`.
 
     Assumes the prior mean vector is a linear combination of the feature matrix.
 

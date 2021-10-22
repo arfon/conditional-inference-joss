@@ -69,7 +69,7 @@ def weighted_quantile(
     Returns:
         np.array: (k,) array of weighted quantiles.
 
-    Notes:
+    Acknowledgements:
         Credit to `Stackoverflow <https://stackoverflow.com/a/29677616/10676300>`_.
     """
     values = np.array(values)

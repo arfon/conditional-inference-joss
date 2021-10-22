@@ -34,8 +34,8 @@ class RQUData(ConventionalEstimatesData):
             effects. Defaults to None.
         ycov (np.ndarray, optional): (n,n) covariance matrix of ``ymean``. Defaults to
             None.
-        xycov (np.ndarray, optional): (n,n) covariance matrix of ``xparamx`` and
-            ``ymean``. Defaults to None.
+        xycov (np.ndarray, optional): (n,n) covariance matrix of ``mean`` and ``ymean``.
+            Defaults to None.
 
     Attributes:
         mean (np.ndarray): (n,) array of conventional estimates used to rank-order
@@ -50,6 +50,15 @@ class RQUData(ConventionalEstimatesData):
             ``cov``.
         xycov (np.ndarray): (n,n) covariance matrix of ``mean`` and ``ymean``. If
             ``None``, use ``cov``.
+
+    Note:
+
+        By default, we assume that the conventional estimates used to rank policies are
+        the same as the conventional estimates of the policy effects. If this is not the
+        case, set ``mean`` and ``cov`` to the conventional estimates used to rank the
+        policies and ``ymean`` and ``ycov`` to the conventional estimates of the policy
+        effects. You must also set ``xycov`` to the covariance matrix of ``mean`` and
+        ``ymean``.
     """
 
     def __init__(  # pylint: disable=too-many-arguments
@@ -182,9 +191,10 @@ class RQU(ModelBase):
             Union[ProjectionResults, RQUResults]: Quantile-unbiased estimation results.
 
         Examples:
+
             Suppose we have 5 policies, each with a true effect of 0. The observed
-                effect of the policies is sampled from a joint normal with identity
-                covariance matrix.
+            effect of the policies is sampled from a joint normal with identity
+            covariance matrix.
 
             .. code-block:: python
 
@@ -287,7 +297,7 @@ class RQU(ModelBase):
                 )
 
         def compute_truncation_set():
-            # compute the trucation set for `truncated_cdf`
+            # compute the trucation set for `truncnorm.cdf`
             # see paper for details on this algorithm
 
             def update_truncation_set(idx, j):
@@ -420,8 +430,8 @@ class ProjectionResults(ResultsBase):
             projection CIs.
         pvalues (np.ndarray): (n,) array of probabilities that the true effect of a
             policy is less than 0.
-        std_params_diag (np.ndarray): (n,) array of standard deviations from the `mean`
-            covariance matrix.
+        std_params_diag (np.ndarray): (n,) array of standard deviations from the
+            ``mean`` covariance matrix.
 
     Examples:
 
