@@ -492,13 +492,14 @@ class ProjectionResults(ResultsBase):
             np.ndarray: (n,2) array of confidence intervals.
         """
         indices = self.indices if cols is None else self.model.get_indices(cols)
+        select = [np.where(self.indices == index)[0][0] for index in indices]
         c_alpha = np.quantile(abs(self.projection_rvs).max(axis=1), 1 - alpha)
         return np.array(
             [
                 self.params - c_alpha * self.std_params_diag,
                 self.params + c_alpha * self.std_params_diag,
             ]
-        ).T[self.indices[indices.argsort()]]
+        ).T[select]
 
     def _make_summary_header(self, alpha: float) -> List[str]:
         return [

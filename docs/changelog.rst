@@ -1,6 +1,11 @@
 Changelog
 =========
 
+0.0.3
+-----
+
+- Fixed a column selection bug in ``ProjectionResults.conf_int``
+
 0.0.2
 -----
 

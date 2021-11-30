@@ -301,8 +301,8 @@ class ResultsBase:
         return np.array(
             [
                 dist.ppf([alpha / 2, 1 - alpha / 2])
-                for idx, dist in enumerate(self.distributions)  # type: ignore, pylint: disable=no-member
-                if idx in indices
+                for index, dist in enumerate(self.distributions)  # type: ignore, pylint: disable=no-member
+                if index in indices
             ]
         )
 
