@@ -327,12 +327,15 @@ class BayesResults(ResultsBase):
 
         Args:
             singular (bool, optional): Indicates the posterior covariance matrix is
-                singular. Defaults to True.
+                singular. Defaults to False.
 
         Returns:
             pd.DataFrame: Rank matrix.
         """
-        if not singular:
+        if len(self.posterior_mean_rvs.shape) == 1:
+            # only estimating one parameter
+            rank_matrix = [1]
+        elif not singular:
             # assumes no ties in rank order
             argsort = np.argsort(-self.posterior_mean_rvs, axis=1)
             rank_matrix = np.array(

@@ -5,6 +5,7 @@ Changelog
 -----
 
 - Fixed a column selection bug in ``ProjectionResults.conf_int``
+- Fixed a bug in Bayes results base: allows for rank matrix when estimating one parameter
 
 0.0.2
 -----
