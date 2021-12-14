@@ -237,6 +237,7 @@ class QuantileUnbiasedAnimation:
             Defaults to seaborn default palette.
         n_frames (int): Number of frames to animate. Defaults to 120.
     """
+    Y_OFFSET = -.07
 
     def __init__(
         self,
@@ -309,6 +310,7 @@ class QuantileUnbiasedAnimation:
 
         # update the vertical line at the location parameter
         self._loc_vline.set_data([loc, loc], [self._ymin, 1])
+        self._loc_text.set_x(loc)
 
         # update the survival function plot
         truncnorm_dist = truncnorm(truncation_set, loc, self.scale)
@@ -332,7 +334,7 @@ class QuantileUnbiasedAnimation:
         self._cdf_data.append(cdf)
         self._cdf_plot.set_data(self._x_data, self._cdf_data)
 
-        plots = [self._loc_vline, self._sf_plot, self._cdf_hline, self._cdf_plot]
+        plots = [self._loc_vline, self._loc_text, self._sf_plot, self._cdf_hline, self._cdf_plot]
         if self.projection_len is None:
             return plots
 
@@ -348,7 +350,9 @@ class QuantileUnbiasedAnimation:
                 [xmin, self._ymin],
             ]
         )
-        return plots + [self._projection_plot]
+        self._projection_lower_text.set_x(loc - self.projection_len)
+        self._projection_upper_text.set_x(loc + self.projection_len)
+        return plots + [self._projection_plot, self._projection_lower_text, self._projection_upper_text]
 
     def make_animation(
         self, title: str = None, xlabel: str = None
@@ -364,7 +368,7 @@ class QuantileUnbiasedAnimation:
         """
         fig = plt.figure()
         ax = fig.add_subplot(xlim=self.xlim, ylim=self._ylim)
-        ax.set_ylabel("alpha")
+        ax.set_ylabel(r"$\alpha$", rotation=0)
         if title is not None:
             ax.set_title(title)
         if xlabel is not None:
@@ -372,6 +376,7 @@ class QuantileUnbiasedAnimation:
 
         # draw a vertical line at the conventional estimate
         ax.axvline(self.x, self._ymin, color=self.palette[1], linestyle="--")
+        ax.text(self.x, self.Y_OFFSET, r"$X(\theta)$", ha="center")
         ax.plot(
             self._linspace,
             norm.cdf(self._linspace, self.x, self.scale),
@@ -392,6 +397,10 @@ class QuantileUnbiasedAnimation:
         self._loc_vline = ax.axvline(
             self.xlim[0], color=self.palette[3], linestyle="--"
         )
+        # text showing the estimator notation
+        loc_text = r"$\hat{\mu}_\alpha$" if self.projection_len is None else r"$\hat{\mu}^H_\alpha$"
+        self._loc_text = ax.text(self.xlim[0], self.Y_OFFSET, loc_text, ha="center")
+        
         # plot of the survival function of the truncated normal
         (self._sf_plot,) = ax.plot([], [], color=self.palette[3])
         # horizontal line at the survival function evaluated at the conventional estimate
@@ -403,6 +412,18 @@ class QuantileUnbiasedAnimation:
         if self.projection_len is not None:
             self._projection_plot = ax.axvspan(
                 0, 0, color=self.palette[5], ymin=self._ymin, alpha=0.2
+            )
+            self._projection_lower_text = ax.text(
+                self.xlim[0] - self.projection_len,
+                self.Y_OFFSET,
+                loc_text[:-1] + r" - c_\beta \sqrt{\Sigma(\theta)}$",
+                ha="center"
+            )
+            self._projection_upper_text = ax.text(
+                self.xlim[0] + self.projection_len,
+                self.Y_OFFSET,
+                loc_text[:-1] + r" + c_\beta \sqrt{\Sigma(\theta)}$",
+                ha="center"
             )
 
         return animation.FuncAnimation(

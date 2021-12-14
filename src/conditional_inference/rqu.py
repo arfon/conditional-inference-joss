@@ -267,7 +267,7 @@ class RQU(ModelBase):
                 index = np.argsort(-self.mean)[rank]
             else:
                 index = self._get_index(col)
-                exact_rank = (self.mean > self.mean[col]).sum()
+                exact_rank = (self.mean > self.mean[index]).sum()
                 if isinstance(rank, str):
                     if rank == "exact":
                         rank = exact_rank
