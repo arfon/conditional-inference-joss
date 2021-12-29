@@ -383,14 +383,15 @@ class RQU(ModelBase):
         Returns:
             List[quantile_unbiased]: Quantile-unbiased distributions of policy effects.
         """
+        indices = self.get_indices(cols)
         if beta == 0:
-            return [self.get_distribution(i, **kwargs) for i in self.get_indices(cols)]
+            return [self.get_distribution(i, **kwargs) for i in indices]
         projection_intervals = self.compute_projection_quantile(
             beta, n_samples
-        ) * np.sqrt(self.ycov.diagonal())
+        ) * np.sqrt(self.ycov[indices][:, indices].diagonal())
         return [
             self.get_distribution(i, projection_interval=interval, **kwargs)
-            for i, interval in zip(self.get_indices(cols), projection_intervals)
+            for i, interval in zip(indices, projection_intervals)
         ]
 
     def projection_rvs(self, size: int = 1) -> np.ndarray:

@@ -136,6 +136,7 @@ class RankConditionAnimation:
         x = self.xlim[0] + i * (self.xlim[1] - self.xlim[0]) / self.n_frames
         # update the vertical line at the conventional estimate of parameter[index]
         self._conventional_vline.set_data([x, x], [self.ymin, 1])
+        self._conventional_label.set_x(x)
 
         # compute the conventional point estimates
         # given the value of the conventional estimate of parameter[index]
@@ -147,13 +148,14 @@ class RankConditionAnimation:
             * (x - self.mean[self.index]),
             self.index,
         )
-        for (dist_line, mean_line), mean, var in zip(
+        for (dist_line, mean_line, mean_label), mean, var in zip(
             self._distribution_plots, conditional_mean, self.conditional_var
         ):
             dist_line.set_data(
                 self._linspace, norm.pdf(self._linspace, mean, np.sqrt(var))
             )
             mean_line.set_data([mean, mean], [self.ymin, 1])
+            mean_label.set_x(mean)
 
         # update the current rank text
         current_rank = np.sum(x <= conditional_mean) + 1
@@ -180,7 +182,7 @@ class RankConditionAnimation:
         return (
             list(chain(self._distribution_plots))
             + self._truncation_sets
-            + [self._conventional_vline, self._rank_text]
+            + [self._conventional_vline, self._conventional_label, self._rank_text]
         )
 
     def make_animation(
@@ -203,21 +205,22 @@ class RankConditionAnimation:
             ax.set_xlabel(xlabel)
 
         # vertical line at the value of the conventional estimate of parameter[index]
+        y_offset = self.ylim[0] + 0.02 * (self.ylim[1] - self.ylim[0])
         self._conventional_vline = ax.axvline(
             self.xlim[0], color=self.palette[1], linestyle="--"
         )
+        self._conventional_label = ax.text(self.xlim[0], y_offset, r"$Z_\theta(\theta)$", ha="center")
         # (distribution of conventional estimate line plot, vertical line at conventional point estimate) tuples
         self._distribution_plots = [
             (
                 ax.plot([], [], color=self.palette[0])[0],
                 ax.axvline(color=self.palette[0], linestyle="--"),
+                ax.text(0, y_offset, r"$Z_\theta(\theta{})$".format(i*"'"), ha="center")
             )
-            for _ in range(len(self.mean) - 1)
+            for i in range(1, len(self.mean))
         ]
         # text displaying the rank of the conventional estimate of the effect of policy[index]
-        self._rank_text = ax.text(
-            self.xlim[0], self.ylim[0] + 0.02 * (self.ylim[1] - self.ylim[0]), ""
-        )
+        self._rank_text = ax.text(self.xlim[0], self.ylim[1], "", va="top")
 
         return animation.FuncAnimation(
             fig, self._animate, self.n_frames, init_func=self._init_func, blit=True

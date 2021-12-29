@@ -6,6 +6,7 @@ Changelog
 
 - Fixed a column selection bug in ``ProjectionResults.conf_int``
 - Fixed a bug in Bayes results base: allows for rank matrix when estimating one parameter
+- Fixed a bug in ``RQU.get_distributions``; the projection CIs didn't line up with the column indices in the previous version
 
 0.0.2
 -----
