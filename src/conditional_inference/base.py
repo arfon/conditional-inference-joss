@@ -153,9 +153,9 @@ class ModelBase:
 
         Args:
             results (LikelihoodModelResults): Conventional likelihood model estimates.
+            *args (Any): Passed to the model class constructor.
             cols (ColumnsType, optional): Names or indices of the policy variables. Defaults to
                 None.
-            *args (Any): Passed to the model class constructor.
             **kwargs (Any): Passed to the model class constructor.
 
         Returns:
@@ -194,7 +194,7 @@ class ModelBase:
             indices = np.arange(results.params.shape[0])
             exog_names = results.model.exog_names
         else:
-            indices = np.array(list(map(get_index, cols)))
+            indices = np.array([get_index(col) for col in cols])
             exog_names = [results.model.exog_names[i] for i in indices]
 
         cov = results.cov_params()
@@ -204,33 +204,59 @@ class ModelBase:
         return cls(
             pd.Series(results.params[indices], index=exog_names),
             cov[indices][:, indices],
-            endog_names=results.model.endog_names,
+            endog_names=kwargs.pop("endog_names", results.model.endog_names),
             *args,
             **kwargs,
         )
 
     @classmethod
     def from_csv(
-        cls: Type[ModelType], filename: str, *args: Any, **kwargs: Any
+        cls: Type[ModelType],
+        filename: str,
+        *args: Any,
+        cols: ColumnsType = None,
+        **kwargs: Any,
     ) -> ModelType:
         """Instantiate an estimator from csv file.
 
         Args:
             filename (str): Name of the csv file.
+            *args (Any): Passed to the model class constructor.
+            cols (ColumnsType, optional): Names or indices of the policy variables. Defaults to
+                None.
+            **kwargs (Any): Passed to the model class constructor.
 
         Returns:
             Model: Estimator.
         """
+
+        def get_index(col: Union[str, int]) -> int:
+            if isinstance(col, str):
+                return exog_names.index(col)
+            if np.isscalar(col):
+                return int(col)
+            raise ValueError(
+                f"Invalid column type {type(col)} for column {col}"
+            )  # pragma: no cover
+
         df = pd.read_csv(filename)
         mean, cov = df.values[:, 0], df.values[:, 1:]  # pylint: disable=no-member
         endog_names, exog_names = (
             df.columns[0],  # pylint: disable=no-member
             df.columns[1:],  # pylint: disable=no-member
         )
+
+        # select columns
+        if cols is None:
+            indices = np.arange(len(df))
+        else:
+            indices = np.array([get_index(col) for col in cols])
+            exog_names = [exog_names[i] for i in indices]
+
         return cls(
-            pd.Series(mean, index=exog_names),
-            cov,
-            endog_names=endog_names,
+            pd.Series(mean[indices], index=exog_names),
+            cov[indices][:, indices],
+            endog_names=kwargs.pop("endog_names", endog_names),
             *args,
             **kwargs,
         )

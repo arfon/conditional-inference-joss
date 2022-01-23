@@ -1,9 +1,12 @@
 """Conditional inference utilities
 """
+from multiprocessing.sharedctypes import Value
 from typing import Any, Optional, Sequence, Union
 
 import numpy as np
+import pandas as pd
 from scipy.stats import multivariate_normal, wasserstein_distance
+from statsmodels.base.model import LikelihoodModelResults
 
 Numeric1DArray = Sequence[float]
 
@@ -48,6 +51,48 @@ def expected_wasserstein_distance(
     sample_weight = _get_sample_weight(sample_weight, estimated_means.shape[0])
     distances = np.apply_along_axis(compute_distance, 1, estimated_means)
     return (sample_weight * distances).sum()
+
+
+def holm_bonferroni_correction(
+    filename: str = None, results: LikelihoodModelResults = None, alpha: float = 0.05
+) -> pd.Series:
+    """Get significant coefficients by performing a Holm-Bonferroni correction.
+
+    Args:
+        filename (str, optional): Name of the csv file with conventional estimates.
+            Defaults to None.
+        results (LikelihoodModelResults, optional): Results. Defaults to None.
+        alpha (float, optional): Significance level. Defaults to .05.
+
+    Raises:
+        ValueError: You must specify either ``filename`` or ``results`` but not both.
+
+    Returns:
+        pd.DataFrame: Dataframe indicating which coefficients are significant.
+
+    Notes:
+        If you input a ``filename``, this correction looks at one-tailed hypothesis
+        tests.
+    """
+    if filename is None and results is None:
+        raise ValueError("filename or results must be specified.")
+
+    if filename is not None and results is not None:
+        raise ValueError("Please specify either filename or results; not both.")
+
+    if results is None:
+        from .bayes.classic import LinearClassicBayes
+
+        results = LinearClassicBayes.from_csv(filename, prior_cov=np.inf).fit()
+
+    argsort = results.pvalues.argsort()
+    df = pd.DataFrame(
+        {"pvalues": results.pvalues[argsort]},
+        index=np.array(results.model.exog_names)[argsort]
+    )
+    index = np.where(df.pvalues > alpha / (len(df) - np.arange(len(df))))[0][0]
+    df["significant"] = np.arange(len(df)) < index
+    return df
 
 
 def weighted_quantile(

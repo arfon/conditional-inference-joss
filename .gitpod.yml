@@ -1,12 +1,13 @@
-image: python:3.9
-
 ports:
   - port: 8000
     onOpen: open-preview
 
 tasks:
-  - init: pip install -r ./requirements.txt
-    command: export TOXENV=py39
+  - init: |
+      pip install -e .
+    command: |
+      pip install -r ./requirements.txt
+      export TOXENV=py38
 
 vscode:
   extensions:
