@@ -88,7 +88,7 @@ def holm_bonferroni_correction(
     argsort = results.pvalues.argsort()
     df = pd.DataFrame(
         {"pvalues": results.pvalues[argsort]},
-        index=np.array(results.model.exog_names)[argsort]
+        index=np.array(results.model.exog_names)[argsort],
     )
     index = np.where(df.pvalues > alpha / (len(df) - np.arange(len(df))))[0][0]
     df["significant"] = np.arange(len(df)) < index
