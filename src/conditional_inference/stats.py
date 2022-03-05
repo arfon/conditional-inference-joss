@@ -435,7 +435,7 @@ class quantile_unbiased(rv_continuous):  # pylint: disable=invalid-name
             value = self.bounds[0] if self.bounds[0] > self.y else self.bounds[1]
             return np.full(q.shape, value)
 
-        q_t = q * (self._cdf_max - self._cdf_min) + self._cdf_min
+        q_t = np.atleast_1d(q) * (self._cdf_max - self._cdf_min) + self._cdf_min
         return np.array([fsolve(func, [self.y], args=(q_i,))[0] for q_i in q_t])
 
     def ppf(  # pylint: disable=arguments-differ

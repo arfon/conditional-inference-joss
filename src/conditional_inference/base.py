@@ -77,7 +77,8 @@ class ConventionalEstimatesData:
         ):
             # assume mean is pd.Series-like
             return self.mean_orig.index.to_list()
-        return [f"x{i}" for i in range(self.mean.shape[0])]
+        zfill = int(np.log10(len(self.mean)))
+        return [f"x{str(i).zfill(zfill)}" for i in range(len(self.mean))]
 
     @exog_names.setter
     def exog_names(

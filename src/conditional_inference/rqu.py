@@ -8,6 +8,11 @@ import numpy as np
 from scipy.stats import multivariate_normal
 from statsmodels.iolib.summary import Summary
 
+from conditional_inference.utils import (
+    compute_projection_quantile,
+    compute_projection_rvs,
+)
+
 from .base import (
     ConventionalEstimatesData,
     ModelBase,
@@ -153,25 +158,6 @@ class RQU(ModelBase):
     ):
         self.seed = seed
         self.data = RQUData(mean, cov, *args, **kwargs)
-
-    def compute_projection_quantile(
-        self, alpha: float = 0.05, n_samples: int = 10000
-    ) -> float:
-        """Compute the 1-alpha quantile for projection confidence intervals.
-
-        Args:
-            alpha (float, optional): Quantile level of the projection CI. Defaults to
-                0.05.
-            n_samples (int, optional): Number of samples used in approximating the
-                1-alpha quantile. Defaults to 10000.
-
-        Returns:
-            float: 1-alpha quantile of the projection CI.
-        """
-        if alpha == 0:
-            return np.inf
-        rvs = self.projection_rvs(size=n_samples)
-        return np.quantile(abs(rvs).max(axis=1), 1 - alpha)
 
     def fit(
         self,
@@ -351,9 +337,16 @@ class RQU(ModelBase):
         )
         check_s_V_condition()
         if beta != 0:
-            kwargs["projection_interval"] = self.compute_projection_quantile(
-                beta, n_samples
-            ) * np.sqrt(self.ycov[i, i])
+            kwargs["projection_interval"] = (
+                compute_projection_quantile(
+                    self.ymean,
+                    self.ycov,
+                    alpha=beta,
+                    n_samples=n_samples,
+                    random_state=self.seed,
+                )
+                * np.sqrt(self.ycov[i, i])
+            )
         return quantile_unbiased(  # type: ignore
             y=self.ymean[i],
             scale=np.sqrt(self.ycov[i, i]),
@@ -386,28 +379,20 @@ class RQU(ModelBase):
         indices = self.get_indices(cols)
         if beta == 0:
             return [self.get_distribution(i, **kwargs) for i in indices]
-        projection_intervals = self.compute_projection_quantile(
-            beta, n_samples
-        ) * np.sqrt(self.ycov[indices][:, indices].diagonal())
+        projection_intervals = (
+            compute_projection_quantile(
+                self.ymean,
+                self.ycov,
+                alpha=beta,
+                n_samples=n_samples,
+                random_state=self.seed,
+            )
+            * np.sqrt(self.ycov[indices][:, indices].diagonal())
+        )
         return [
             self.get_distribution(i, projection_interval=interval, **kwargs)
             for i, interval in zip(indices, projection_intervals)
         ]
-
-    def projection_rvs(self, size: int = 1) -> np.ndarray:
-        """Sample random values to construct projection confidence intervals.
-
-        Args:
-            size (int, optional): Number of samples. Defaults to 1.
-
-        Returns:
-            np.ndarray: (size, 2) array of samples.
-        """
-        rvs = multivariate_normal.rvs(
-            np.zeros(self.ymean.shape), self.ycov, size=size, random_state=self.seed
-        )
-        rvs /= np.sqrt(self.ycov.diagonal())
-        return np.array([rvs.min(axis=1), rvs.max(axis=1)]).T
 
 
 class ProjectionResults(ResultsBase):
@@ -476,7 +461,9 @@ class ProjectionResults(ResultsBase):
 
         super().__init__(model, cols, title)
         self.params = model.ymean[self.indices]
-        self.projection_rvs = model.projection_rvs(n_samples)
+        self.projection_rvs = compute_projection_rvs(
+            model.ymean, model.ycov, size=n_samples, random_state=model.seed
+        )
         self.std_params_diag = np.sqrt(model.ycov.diagonal())[self.indices]
         self.pvalues = compute_pvalues()
 
@@ -589,10 +576,8 @@ class RQUResults(ResultsBase):
         Returns:
             np.ndarray: (n,2) array of confidence intervals.
         """
-        # min-max scale significance level given beta-quantile projection interval
-        # see paper for details
-        alpha = (alpha - self.beta) / (1 - self.beta)
-        return super().conf_int(alpha, cols)
+        # see paper for details on adjusting alpha
+        return super().conf_int((alpha - self.beta) / (1 - self.beta), cols)
 
     def _make_summary_header(self, alpha: float) -> List[str]:
         return ["coef (median)", "pvalue", f"[{alpha/2}", f"{1-alpha/2}]"]

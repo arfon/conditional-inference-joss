@@ -209,13 +209,21 @@ class RankConditionAnimation:
         self._conventional_vline = ax.axvline(
             self.xlim[0], color=self.palette[1], linestyle="--"
         )
-        self._conventional_label = ax.text(self.xlim[0], y_offset, r"$Z_\theta(\theta)$", ha="center")
+        self._conventional_label = ax.text(self.xlim[0], y_offset, r"$x$", ha="center")
         # (distribution of conventional estimate line plot, vertical line at conventional point estimate) tuples
+        conditional_mean_str = r"$Z_\theta(\theta{0}) + \frac{{\Sigma(\theta{0},\theta)}}{{\Sigma(\theta)}} x$"
         self._distribution_plots = [
             (
                 ax.plot([], [], color=self.palette[0])[0],
                 ax.axvline(color=self.palette[0], linestyle="--"),
-                ax.text(0, y_offset, r"$Z_\theta(\theta{})$".format(i*"'"), ha="center")
+                ax.text(
+                    0,
+                    y_offset,
+                    conditional_mean_str.format(
+                        i * "'"
+                    ),
+                    ha="center",
+                ),
             )
             for i in range(1, len(self.mean))
         ]
@@ -240,7 +248,8 @@ class QuantileUnbiasedAnimation:
             Defaults to seaborn default palette.
         n_frames (int): Number of frames to animate. Defaults to 120.
     """
-    Y_OFFSET = -.07
+
+    Y_OFFSET = -0.07
 
     def __init__(
         self,
@@ -337,7 +346,13 @@ class QuantileUnbiasedAnimation:
         self._cdf_data.append(cdf)
         self._cdf_plot.set_data(self._x_data, self._cdf_data)
 
-        plots = [self._loc_vline, self._loc_text, self._sf_plot, self._cdf_hline, self._cdf_plot]
+        plots = [
+            self._loc_vline,
+            self._loc_text,
+            self._sf_plot,
+            self._cdf_hline,
+            self._cdf_plot,
+        ]
         if self.projection_len is None:
             return plots
 
@@ -355,7 +370,11 @@ class QuantileUnbiasedAnimation:
         )
         self._projection_lower_text.set_x(loc - self.projection_len)
         self._projection_upper_text.set_x(loc + self.projection_len)
-        return plots + [self._projection_plot, self._projection_lower_text, self._projection_upper_text]
+        return plots + [
+            self._projection_plot,
+            self._projection_lower_text,
+            self._projection_upper_text,
+        ]
 
     def make_animation(
         self, title: str = None, xlabel: str = None
@@ -401,9 +420,13 @@ class QuantileUnbiasedAnimation:
             self.xlim[0], color=self.palette[3], linestyle="--"
         )
         # text showing the estimator notation
-        loc_text = r"$\hat{\mu}_\alpha$" if self.projection_len is None else r"$\hat{\mu}^H_\alpha$"
+        loc_text = (
+            r"$\hat{\mu}_\alpha$"
+            if self.projection_len is None
+            else r"$\hat{\mu}^H_\alpha$"
+        )
         self._loc_text = ax.text(self.xlim[0], self.Y_OFFSET, loc_text, ha="center")
-        
+
         # plot of the survival function of the truncated normal
         (self._sf_plot,) = ax.plot([], [], color=self.palette[3])
         # horizontal line at the survival function evaluated at the conventional estimate
@@ -420,13 +443,13 @@ class QuantileUnbiasedAnimation:
                 self.xlim[0] - self.projection_len,
                 self.Y_OFFSET,
                 loc_text[:-1] + r" - c_\beta \sqrt{\Sigma(\theta)}$",
-                ha="center"
+                ha="center",
             )
             self._projection_upper_text = ax.text(
                 self.xlim[0] + self.projection_len,
                 self.Y_OFFSET,
                 loc_text[:-1] + r" + c_\beta \sqrt{\Sigma(\theta)}$",
-                ha="center"
+                ha="center",
             )
 
         return animation.FuncAnimation(
