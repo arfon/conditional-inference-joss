@@ -115,8 +115,8 @@ class RQU(ModelBase):
     Args:
         mean (Numeric1DArray): (n,) array of conventional estimates of policy effects.
         cov (np.ndarray): (n,n) covariance matrix of ``mean``.
+        *args (Any): Additional arguments passed to :class:`RQUData` constructor.
         seed (int, optional): Random seed. Defaults to 0.
-        **args (Any): Additional arguments passed to :class:`RQUData` constructor.
         **kwargs (Any): Additional keyword arguments passed to :class:`RQUData`
             constructor.
 
@@ -339,7 +339,6 @@ class RQU(ModelBase):
         if beta != 0:
             kwargs["projection_interval"] = (
                 compute_projection_quantile(
-                    self.ymean,
                     self.ycov,
                     alpha=beta,
                     n_samples=n_samples,
@@ -381,7 +380,6 @@ class RQU(ModelBase):
             return [self.get_distribution(i, **kwargs) for i in indices]
         projection_intervals = (
             compute_projection_quantile(
-                self.ymean,
                 self.ycov,
                 alpha=beta,
                 n_samples=n_samples,
@@ -411,13 +409,13 @@ class ProjectionResults(ResultsBase):
     Attributes:
         model (RQU): The model instance.
         indices (List[int]): Indices of the policies of interest.
-        params (np.ndarray): (n,) array of conventional point estimates.
+        params (np.ndarray): (# policies,) array of conventional point estimates.
         projection_rvs (np.ndarray): (n_samples, 2) array of samples used to construct
             projection CIs.
-        pvalues (np.ndarray): (n,) array of probabilities that the true effect of a
-            policy is less than 0.
-        std_params_diag (np.ndarray): (n,) array of standard deviations from the
-            ``mean`` covariance matrix.
+        pvalues (np.ndarray): (# policies,) array of probabilities that the true effect
+            of a policy is less than 0.
+        std_params_diag (np.ndarray): (# policies,) array of standard deviations from
+            the ``mean`` covariance matrix.
 
     Examples:
 
@@ -462,7 +460,7 @@ class ProjectionResults(ResultsBase):
         super().__init__(model, cols, title)
         self.params = model.ymean[self.indices]
         self.projection_rvs = compute_projection_rvs(
-            model.ymean, model.ycov, size=n_samples, random_state=model.seed
+            model.ycov, size=n_samples, random_state=model.seed
         )
         self.std_params_diag = np.sqrt(model.ycov.diagonal())[self.indices]
         self.pvalues = compute_pvalues()

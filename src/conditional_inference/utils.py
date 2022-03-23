@@ -19,12 +19,11 @@ def _get_sample_weight(sample_weight: Optional[np.ndarray], shape: int) -> np.nd
 
 
 def compute_projection_rvs(
-    mean: np.array, cov: np.array, size: int = 1, random_state: int = None
+    cov: np.array, size: int = 1, random_state: int = None
 ) -> np.ndarray:
     """Sample random values to construct projection confidence intervals.
 
     Args:
-        mean (np.array): (# policies,) array of means.
         cov (np.array): (# policies, # policies) covariance matrix.
         size (int, optional): Number of samples. Defaults to 1.
         random_state (int, optional): Random state passed to
@@ -34,7 +33,7 @@ def compute_projection_rvs(
         np.ndarray: (size, 2) array of samples.
     """
     rvs = multivariate_normal.rvs(
-        np.zeros(len(mean)), cov, size=size, random_state=random_state
+        np.zeros(cov.shape[0]), cov, size=size, random_state=random_state
     )
     if len(rvs.shape) == 1:
         rvs = np.atleast_2d(rvs).T
@@ -43,7 +42,6 @@ def compute_projection_rvs(
 
 
 def compute_projection_quantile(
-    mean: np.array,
     cov: np.array,
     alpha: float = 0.05,
     n_samples: int = 10000,
@@ -52,7 +50,6 @@ def compute_projection_quantile(
     """Compute the 1-alpha quantile for projection confidence intervals.
 
     Args:
-        mean (np.array): (# policies,) array of means.
         cov (np.array): (# policies, # policies) covariance matrix.
         alpha (float, optional): Quantile level of the projection CI. Defaults to 0.05.
         n_samples (int, optional): Number of samples used in approximating the 1-alpha
@@ -65,9 +62,9 @@ def compute_projection_quantile(
     """
     if alpha == 0:
         return np.inf
-    if len(mean) == 1:
+    if cov.shape[0] == 1:
         return norm.ppf(1 - alpha, 0, np.sqrt(cov))[0]
-    rvs = compute_projection_rvs(mean, cov, size=n_samples, random_state=random_state)
+    rvs = compute_projection_rvs(cov, size=n_samples, random_state=random_state)
     return np.quantile(abs(rvs).max(axis=1), 1 - alpha)
 
 

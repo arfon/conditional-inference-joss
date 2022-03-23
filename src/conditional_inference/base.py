@@ -302,6 +302,7 @@ class ResultsBase:
     ):
         self.model = model
         self.indices = model.get_indices(cols)
+        self.n_policies = len(self.indices)
         self.title = title
 
     def conf_int(self, alpha: float = 0.05, cols: ColumnsType = None) -> np.ndarray:
@@ -393,7 +394,7 @@ class ResultsBase:
         yname: str = None,
         xname: Sequence[str] = None,
         title: str = None,
-        alpha: float = 0.05,
+        alpha: float = 0.05
     ) -> Summary:
         """Create a summary table.
 
