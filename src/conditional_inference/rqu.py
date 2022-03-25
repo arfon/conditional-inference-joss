@@ -451,19 +451,18 @@ class ProjectionResults(ResultsBase):
         n_samples: int = 10000,
         title: str = "Projection estimates",
     ):
-        def compute_pvalues():
-            params = self.params.reshape(-1, 1).repeat(n_samples, axis=1)
-            std = self.std_params_diag.reshape(-1, 1).repeat(n_samples, axis=1)
-            arr = params + self.projection_rvs[:, 0] * std
-            return (arr < 0).mean(axis=1)
-
         super().__init__(model, cols, title)
         self.params = model.ymean[self.indices]
         self.projection_rvs = compute_projection_rvs(
             model.ycov, size=n_samples, random_state=model.seed
         )
         self.std_params_diag = np.sqrt(model.ycov.diagonal())[self.indices]
-        self.pvalues = compute_pvalues()
+
+        # compute p values
+        params = self.params.reshape(-1, 1).repeat(n_samples, axis=1)
+        std = self.std_params_diag.reshape(-1, 1).repeat(n_samples, axis=1)
+        arr = params + self.projection_rvs[:, 0] * std
+        self.pvalues = (arr < 0).mean(axis=1)
 
     def conf_int(self, alpha: float = 0.05, cols: ColumnsType = None) -> np.ndarray:
         """Compute the 1-alpha confidence interval.
@@ -477,15 +476,13 @@ class ProjectionResults(ResultsBase):
         Returns:
             np.ndarray: (n,2) array of confidence intervals.
         """
-        indices = self.indices if cols is None else self.model.get_indices(cols)
-        select = [np.where(self.indices == index)[0][0] for index in indices]
         c_alpha = np.quantile(abs(self.projection_rvs).max(axis=1), 1 - alpha)
         return np.array(
             [
                 self.params - c_alpha * self.std_params_diag,
                 self.params + c_alpha * self.std_params_diag,
             ]
-        ).T[select]
+        ).T[self._get_indices(cols)]
 
     def _make_summary_header(self, alpha: float) -> List[str]:
         return [

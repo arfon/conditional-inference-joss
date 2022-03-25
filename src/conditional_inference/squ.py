@@ -23,11 +23,18 @@ class SQU(ModelBase):
     Attributes:
         seed (int): Random seed.
     """
-    def __init__(self, *args: Any, seed: int=0, **kwargs: Any):
+
+    def __init__(self, *args: Any, seed: int = 0, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.seed = seed
 
-    def fit(self, cols: ColumnsType=None, alpha: float=0.05, two_sided:bool=True, **kwargs: Any) -> SQUResults:
+    def fit(
+        self,
+        cols: ColumnsType = None,
+        alpha: float = 0.05,
+        two_sided: bool = True,
+        **kwargs: Any,
+    ) -> SQUResults:
         """Fit the SQU estimator.
 
         Args:
@@ -42,7 +49,9 @@ class SQU(ModelBase):
         """
         return SQUResults(self, cols, alpha=alpha, two_sided=two_sided, **kwargs)
 
-    def compute_critical_values(self, alpha: float=0.05, two_sided: bool=True, n_samples: int=10000) -> np.ndarray:
+    def compute_critical_values(
+        self, alpha: float = 0.05, two_sided: bool = True, n_samples: int = 10000
+    ) -> np.ndarray:
         """Compute values at which each hypothesis would be rejected.
 
         Args:
@@ -66,7 +75,13 @@ class SQU(ModelBase):
             * np.sqrt(self.cov.diagonal())
         )
 
-    def get_distributions(self, cols:ColumnsType=None, alpha:float=0.05, two_sided:bool=True, n_samples: int=10000) -> list[quantile_unbiased]:
+    def get_distributions(
+        self,
+        cols: ColumnsType = None,
+        alpha: float = 0.05,
+        two_sided: bool = True,
+        n_samples: int = 10000,
+    ) -> list[quantile_unbiased]:
         """Get quantile-unbiased distributions.
 
         Args:
@@ -82,6 +97,7 @@ class SQU(ModelBase):
             list[quantile_unbiased]: Quantile-unbiased distributions for selected
                 policies.
         """
+
         def get_truncation_set(critical_value):
             if two_sided:
                 return [(-np.inf, -critical_value), (critical_value, np.inf)]
@@ -127,14 +143,15 @@ class SQUResults(ResultsBase):
     Raises:
         RuntimeError: If no policies achieved statistical significance.
     """
+
     def __init__(
         self,
         model: SQU,
-        cols: ColumnsType=None,
-        alpha: float=0.05,
-        two_sided: bool=True,
-        n_samples: int=10000,
-        title: str="Quantile-unbiased estimates",
+        cols: ColumnsType = None,
+        alpha: float = 0.05,
+        two_sided: bool = True,
+        n_samples: int = 10000,
+        title: str = "Quantile-unbiased estimates",
     ):
         critical_values = model.compute_critical_values(alpha, two_sided, n_samples)
         if two_sided:

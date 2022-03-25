@@ -302,7 +302,9 @@ class ResultsBase:
     ):
         self.model = model
         self.indices = model.get_indices(cols)
+        self.xname = np.array(model.exog_names)[self.indices]
         self.n_policies = len(self.indices)
+        self.pvalues = np.full(self.n_policies, np.nan)
         self.title = title
 
     def conf_int(self, alpha: float = 0.05, cols: ColumnsType = None) -> np.ndarray:
@@ -325,12 +327,10 @@ class ResultsBase:
         if not hasattr(self, "params"):
             raise AttributeError("Results object does not have `params` attribute.")
 
-        indices = self._get_indices(cols)
         return np.array(
             [
-                dist.ppf([alpha / 2, 1 - alpha / 2])
-                for index, dist in enumerate(self.distributions)  # type: ignore, pylint: disable=no-member
-                if index in indices
+                self.distributions[i].ppf([alpha / 2, 1 - alpha / 2])
+                for i in self._get_indices(cols)
             ]
         )
 
@@ -358,7 +358,7 @@ class ResultsBase:
             raise AttributeError("Results object does not have `params` attribute.")
 
         conf_int = self.conf_int(alpha)
-        xname = xname or [self.model.exog_names[idx] for idx in self.indices]
+        xname = xname or self.xname
         yticks = np.arange(len(xname), 0, -1)
 
         if ax is None:
@@ -394,7 +394,7 @@ class ResultsBase:
         yname: str = None,
         xname: Sequence[str] = None,
         title: str = None,
-        alpha: float = 0.05
+        alpha: float = 0.05,
     ) -> Summary:
         """Create a summary table.
 
@@ -412,9 +412,6 @@ class ResultsBase:
         if not hasattr(self, "params"):
             raise AttributeError("Results object does not have `params` attribute.")
 
-        if not hasattr(self, "pvalues"):
-            raise AttributeError("Results object does not have `pvalues` attribute.")
-
         params_header = self._make_summary_header(alpha)
         params_data = np.hstack(
             (np.array([self.params, self.pvalues]).T, self.conf_int(alpha))  # type: ignore, pylint: disable=no-member
@@ -427,16 +424,20 @@ class ResultsBase:
             title=title,
         )
 
-    def _get_indices(self, cols: ColumnsType = None) -> np.array:
-        if not hasattr(self, "params"):
-            raise AttributeError(
-                f"Results object {self.__class__.__qualname__} has no attribute `params`"
-            )
-        return (
-            np.arange(len(self.params))  # type: ignore, pylint: disable=no-member
-            if cols is None
-            else self.model.get_indices(cols)
-        )
+    def _get_indices(self, cols: ColumnsType = None) -> np.ndarray:
+        """Get the requested indices relative the result parameters.
+
+        Note: Returned indices are relative to the result parameters, not relative to
+        the model means.
+
+        Args:
+            cols (ColumnsType, optional): Columns to get. Defaults to None.
+
+        Returns:
+            np.ndarray: (# columns,) array of indices.
+        """
+        indices = self.indices if cols is None else self.model.get_indices(cols)
+        return [np.where(self.indices == index)[0][0] for index in indices]
 
     def _make_summary(
         self,
@@ -458,7 +459,7 @@ class ResultsBase:
         Returns:
             Summary: Summary table.
         """
-        params_stubs = xname or [self.model.exog_names[idx] for idx in self.indices]
+        params_stubs = xname or list(self.xname)
         params_data_str = [[f"{val:.3f}" for val in row] for row in params_data]
 
         smry = Summary()
