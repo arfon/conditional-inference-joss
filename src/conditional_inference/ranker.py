@@ -5,7 +5,9 @@ from __future__ import annotations
 from itertools import combinations
 from typing import Any, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 from conditional_inference.base import ColumnsType, ModelBase, ResultsBase
 from scipy.stats import multivariate_normal
 import pandas as pd
@@ -110,8 +112,27 @@ class RankerResultsBase(ResultsBase):
         names = np.array(self.model.exog_names)[indices]
         return pd.DataFrame(matrix, columns=names, index=names)
 
-    def compute_hypothesis_matrix(self, *args, **kwargs):
+    def compute_hypothesis_matrix(self, *args, **kwargs) -> pd.DataFrame:
         raise NotImplementedError()
+
+    def hypothesis_heatmap(self, *args, ax=None, **kwargs):
+        if ax is None:
+            _, ax = plt.subplots()
+        matrix = self.compute_hypothesis_matrix(*args, **kwargs)
+        mask = np.zeros_like(matrix)
+        mask[np.triu_indices_from(mask)] = True
+        sns.heatmap(
+            self.compute_hypothesis_matrix(*args, **kwargs),
+            cbar=False,
+            ax=ax,
+            yticklabels=self.model.exog_names,
+            xticklabels=self.model.exog_names,
+            # mask=mask,
+            square=True,
+        )
+        ax.set_title(self.title)
+        plt.yticks(rotation=0)
+        return ax
 
     def conf_int(
         self, alpha: float = 0.05, cols: ColumnsType = None, **kwargs: Any
@@ -158,6 +179,7 @@ class RankerResultsBase(ResultsBase):
             $Pr(r_i \leq \tau) \geq \hat{p}_i$ where $r_i$ is the true rank of policy
             $i$. The estimates are not designed to sum to 1.
         """
+
         def compute_prob_best_policies_col(i):
             # i is the index of a policy
             alpha = 0.5
@@ -171,9 +193,10 @@ class RankerResultsBase(ResultsBase):
             return alpha
 
         iterations = int(np.ceil(-np.log2(tol)))
-        return 1 - np.array(
+        prob_best = 1 - np.array(
             [compute_prob_best_policies_col(i) for i in self.model.get_indices(cols)]
         )
+        return prob_best[0] if len(prob_best) == 1 else prob_best
 
 
 class MarginalResults(RankerResultsBase):
@@ -219,9 +242,10 @@ class MarginalResults(RankerResultsBase):
         *args: Any,
         tails: str = "two",
         n_samples: int = 10000,
+        title: str = "Marginal ranking estimates",
         **kwargs: Any,
     ):
-        super().__init__(model, *args, **kwargs)
+        super().__init__(model, *args, title=title, **kwargs)
         self.params = (-self.model.mean).argsort().argsort()[self.indices]
         self.tails = tails
 
@@ -333,7 +357,9 @@ class MarginalResults(RankerResultsBase):
 
         See :class:`RankerResultsBase`.
         """
-        return super().compute_prob_best_policies(tau, cols=cols, tol=tol, tails="lower", **kwargs)
+        return super().compute_prob_best_policies(
+            tau, cols=cols, tol=tol, tails="lower", **kwargs
+        )
 
 
 class SimultaneousResults(RankerResultsBase):
@@ -364,9 +390,14 @@ class SimultaneousResults(RankerResultsBase):
     """
 
     def __init__(
-        self, model: Ranker, *args: Any, n_samples: int = 10000, **kwargs: Any
+        self,
+        model: Ranker,
+        *args: Any,
+        n_samples: int = 10000,
+        title: str = "Simultaneous ranking estimates",
+        **kwargs: Any,
     ):
-        super().__init__(model, *args, **kwargs)
+        super().__init__(model, *args, title=title, **kwargs)
         self.params = (-model.mean).argsort().argsort()[self.indices]
 
         delta_mean, delta_cov = [], []
