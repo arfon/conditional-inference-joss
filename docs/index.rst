@@ -8,6 +8,9 @@ Multiple Inference documentation
 
 A statistics package for comparing multiple parameters (e.g., multiple treatments, policies, or subgroups).
 
+.. image:: https://readthedocs.org/projects/dsbowen-conditional-inference/badge/?version=latest
+   :target: https://dsbowen-conditional-inference.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
 .. image:: https://gitlab.com/dsbowen/conditional-inference/badges/master/pipeline.svg
    :target: https://gitlab.com/dsbowen/conditional-inference/-/commits/master
 .. image:: https://gitlab.com/dsbowen/conditional-inference/badges/master/coverage.svg

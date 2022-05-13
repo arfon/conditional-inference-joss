@@ -66,6 +66,7 @@ class SignificanceCondition(ModelBase):
             print(dist.ppf([.025, .5, .975]))
 
         .. testoutput::
+            :options: -ELLIPSIS, +NORMALIZE_WHITESPACE
 
             [-0.32622156  1.95349752  4.8138274 ]
 

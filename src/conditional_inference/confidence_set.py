@@ -423,6 +423,8 @@ class PairwiseComparison(ConfidenceSet):
             import numpy as np
             from conditional_inference.confidence_set import PairwiseComparison
 
+            np.random.seed(0)
+
             x = np.arange(-1, 2)
             cov = np.identity(3) / 10
             model = PairwiseComparison(x, cov)
@@ -536,9 +538,9 @@ class MarginalRanking(ConfidenceSet):
             =========================================================
                rank (conventional) pvalue 0.95 CI lower 0.95 CI upper
             ---------------------------------------------------------
-            x0               2.000    nan         1.000         2.000
-            x1               1.000    nan         0.000         2.000
-            x2               0.000    nan         0.000         1.000
+            x0               3.000    nan         2.000         3.000
+            x1               2.000    nan         1.000         3.000
+            x2               1.000    nan         1.000         2.000
             ===============
             Dep. Variable y
             ---------------
@@ -674,9 +676,9 @@ class SimultaneousRanking(ConfidenceSet):
             =========================================================
                rank (conventional) pvalue 0.95 CI lower 0.95 CI upper
             ---------------------------------------------------------
-            x0               2.000    nan         1.000         2.000
-            x1               1.000    nan         0.000         2.000
-            x2               0.000    nan         0.000         1.000
+            x0               3.000    nan         2.000         3.000
+            x1               2.000    nan         1.000         3.000
+            x2               1.000    nan         1.000         2.000
             ===============
             Dep. Variable y
             ---------------
