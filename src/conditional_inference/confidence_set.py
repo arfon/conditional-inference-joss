@@ -423,8 +423,6 @@ class PairwiseComparison(ConfidenceSet):
             import numpy as np
             from conditional_inference.confidence_set import PairwiseComparison
 
-            np.random.seed(0)
-
             x = np.arange(-1, 2)
             cov = np.identity(3) / 10
             model = PairwiseComparison(x, cov)
