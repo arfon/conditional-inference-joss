@@ -14,6 +14,7 @@ conditional\_inference.utils
    .. autosummary::
    
       expected_wasserstein_distance
+      holm_bonferroni_correction
       weighted_cdf
       weighted_quantile
    

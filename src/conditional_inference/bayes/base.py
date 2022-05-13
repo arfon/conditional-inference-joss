@@ -1,65 +1,19 @@
-"""Base classes for Bayesian analysis
+"""Base classes for Bayesian analysis.
 """
 from __future__ import annotations
 
 import warnings
-from functools import partial
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import norm, multivariate_normal, wasserstein_distance
+from scipy.stats import multivariate_normal, norm, rv_continuous, wasserstein_distance
 
-from ..base import ModelBase, Numeric1DArray, ResultsBase, ColumnsType
-from ..utils import expected_wasserstein_distance, weighted_quantile
-
-
-class BayesModelBase(ModelBase):
-    """Mixin for Bayesian models.
-
-    Inherits from :class:`conditional_inference.base.ModelBase`.
-
-    Args:
-        mean (Numeric1DArray): (n,) array of conventionally-estimated means.
-        cov (np.ndarray): (n, n) covariance matrix.
-        X (np.ndarray, optional): (n, p) feature matrix. If ``None``, a constant
-            regressor will be used. Defaults to None.
-        *args (Any): Passed to ``ModelBase``.
-        **kwargs (Any): Passed to ``ModelBase``.
-
-    Attributes:
-        X (np.ndarray): (n, p) feature matrix.
-    """
-
-    def __init__(
-        self,
-        mean: Numeric1DArray,
-        cov: np.ndarray,
-        *args: Any,
-        X: np.ndarray = None,
-        **kwargs: Any,
-    ):
-        super().__init__(mean, cov, *args, **kwargs)
-        if X is None:
-            self.X = np.ones((len(mean), 1))
-        elif hasattr(X, "values"):
-            # assume X.values is array-like
-            self.X = X.values  # type: ignore
-        else:
-            self.X = X
-
-    def _compute_xi(self, prior_cov: np.ndarray) -> np.ndarray:
-        """Compute xi; see paper for mathematical detail.
-
-        Args:
-            prior_cov (np.ndarray): (n, n) prior covariance matrix.
-
-        Returns:
-            np.ndarray: (n, n) weight matrix.
-        """
-        return self.cov @ np.linalg.inv(prior_cov + self.cov)
+from ..base import ColumnType, ModelBase, Numeric1DArray, ResultsBase, ColumnsType
+from ..stats import joint_distribution
+from ..utils import weighted_quantile
 
 
 class BayesResults(ResultsBase):
@@ -68,90 +22,66 @@ class BayesResults(ResultsBase):
     Inherits from :class:`conditional_inference.base.ResultsBase`.
 
     Args:
-        model (BayesModelBase): Model on which results are based.
-        cols (ColumnsType): Columns of interest.
-        params (np.ndarray): (n,) array of point estimates, usually the average
-            posterior mean.
-        cov_params (np.ndarray): (n, n) posterior covariance matrix.
-        n_samples (int, optional): Number of samples to draw for approximations, such
-            as likelihood calculations. Defaults to 1000.
-        title (str, optional): Results title. Defaults to "Bayesian estimates".
+        *args (Any): Passed to :class:`conditional_inference.base.ResultsBase`.
+        n_samples (int): Number of samples used for approximations (ranking, likelihood
+            and Wasserstein distance). Defaults to 10000.
+        **kwargs (Any): Passed to :class:`conditional_inference.base.ResultsBase`.
 
     Attributes:
-        params (np.ndarray): (n,) array of point estimates, usually the average
-            posterior mean.
-        cov_params (np.ndarray): (n, n) posterior covariance matrix.
         distributions (List[scipy.stats.norm]): Marginal posterior distributions.
         multivariate_distribution (scipy.stats.multivariate_normal): Joint posterior
             distribution.
-        pvalues (np.ndarray): (n,) array of probabilities that the true mean is less
-            than 0.
-        posterior_mean_rvs (np.ndarray): (n_samples, n) matrix of draws from the
-            posterior.
         rank_matrix (pd.DataFrame): (n, n) dataframe of probabilities that column i has
             rank j.
     """
 
-    def __init__(
-        self,
-        model: BayesModelBase,
-        cols: Optional[ColumnsType],
-        params: np.ndarray,
-        cov_params: np.ndarray,
-        n_samples: int = 1000,
-        seed: int = 0,
-        title: str = "Bayesian estimates",
-    ):
-        super().__init__(model, cols, title)
+    _default_title = "Bayesian estimates"
 
-        self.params = params[self.indices]
-        self.cov_params = cov_params[self.indices][:, self.indices]
-        self.distributions = [
-            norm(params[k], np.sqrt(cov_params[k, k])) for k in self.indices
-        ]
-        self.pvalues = np.array([dist.cdf(0) for dist in self.distributions])
-        self.sample_weight = np.full(n_samples, 1 / n_samples)
-        self.seed = seed
+    def __init__(self, *args: Any, n_samples: int = 10000, **kwargs: Any):
+        super().__init__(*args, **kwargs)
 
+        # get the marginal (posterior) distributions, parameters, and pvalues
+        self.marginal_distributions, params, pvalues = [], [], []
+        for i in range(self.model.n_params):
+            dist = self.model.get_marginal_distribution(i)
+            self.marginal_distributions.append(dist)
+            params.append(dist.mean())
+            pvalues.append(dist.cdf(0))
+        self.params = np.array(params).squeeze()
+        self.pvalues = np.array(pvalues).squeeze()
+
+        # estimate the parameter rankings by drawing from the posterior
         try:
-            self.multivariate_distribution = multivariate_normal(
-                self.params, self.cov_params
+            self.joint_distribution = self.model.get_joint_distribution()
+            self._posterior_rvs = self.joint_distribution.rvs(size=n_samples)
+            self._sample_weight = np.ones(n_samples)
+        except NotImplementedError:
+            warnings.warn(
+                "Model does not provide a joint posterior distribution."
+                " I'll assume the marginal posterior distributions are independent."
+                " Rank estimates and likelihood and Wasserstein approximations may be"
+                " unreliable."
             )
-            self.posterior_mean_rvs = self.multivariate_distribution.rvs(
-                n_samples, random_state=seed
+            self._posterior_rvs = joint_distribution(self.marginal_distributions).rvs(
+                size=n_samples
             )
-            self.rank_matrix = self._compute_rank_matrix()
-        except np.linalg.LinAlgError:
-            # the policy effects are perfectly correlated
-            # this occurs when the prior covariance == 0
-            warnings.warn("Posterior covariance matrix is singular")
-            self.multivariate_distribution = None
-            err = norm.rvs(
-                0, np.sqrt(self.cov_params[0, 0]), size=n_samples, random_state=seed
-            )
-            self.posterior_mean_rvs = self.params + np.repeat(
-                err.reshape(-1, 1), self.params.shape[0], axis=1
-            )
-            self.rank_matrix = self._compute_rank_matrix(singular=True)
+            self._sample_weight = np.ones(n_samples)
+        self._sample_weight /= self._sample_weight.sum()
+        argsort = np.argsort(-self._posterior_rvs, axis=1)
+        rank_matrix = np.array(
+            [
+                ((argsort == k).T * self._sample_weight).sum(axis=1)
+                for k in range(self.model.n_params)
+            ]
+        ).T
+        self.rank_df = pd.DataFrame(rank_matrix, columns=self.model.exog_names, index=np.arange(1, self.model.n_params+1))
+        self.rank_df.index.name = "Rank"
 
-    @property
-    def reconstructed_mean_rvs(  # pylint: disable=missing-function-docstring
-        self,
-    ) -> np.ndarray:
-        # reconstruct means and cache the value if they have not been created already
-        def reconstruct_means(mean):
-            return multivariate_normal.rvs(mean, self.model.cov)
-
-        if not hasattr(self, "_reconstructed_mean_rvs"):
-            self.reconstructed_mean_rvs = np.apply_along_axis(
-                reconstruct_means, 1, self.posterior_mean_rvs
-            )
-
-        return self._reconstructed_mean_rvs
-
-    @reconstructed_mean_rvs.setter
-    def reconstructed_mean_rvs(self, value: np.ndarray) -> None:
-        self._reconstructed_mean_rvs = value
+        self._reconstructed_rvs = np.apply_along_axis(
+            lambda mean: multivariate_normal.rvs(mean, self.model.cov),
+            1,
+            self._posterior_rvs,
+        )
 
     def expected_wasserstein_distance(
         self, mean: Numeric1DArray = None, cov: np.ndarray = None, **kwargs: Any
@@ -163,110 +93,109 @@ class BayesResults(ResultsBase):
         distribution you would expect to observe according to this model.
 
         Args:
-            mean (Numeric1DArray, optional): (n,) array of sample means. Defaults to
+            mean (Numeric1DArray, optional): (# params,) array of sample conventionally
+                estimated means. If None, use the model's estimated means. Defaults to
                 None.
-            cov (np.ndarray, optional): (n, n) covaraince matrix for sample means.
-                Defaults to None.
+            cov (np.ndarray, optional): (# params, # params) covaraince matrix for
+                conventionally estimated means. If None, use the model's estimated
+                covariance matrix. Defaults to None.
             **kwargs (Any): Keyword arguments for ``scipy.stats.wasserstein_distance``.
 
         Returns:
             float: Expected Wasserstein distance.
-
-        Note:
-            ``mean`` and ``cov`` are taken to be the mean and covariance used to fit the
-            model by default, giving you the in-sample Wasserstein distance.
         """
-
-        def compute_distance(reconstructed_mean):
-            return wasserstein_distance(reconstructed_mean, self.model.mean, **kwargs)
-
         if mean is None and cov is None:
-            distances = np.apply_along_axis(
-                compute_distance, 1, self.reconstructed_mean_rvs
+            mean = self.params
+            reconstructed_rvs = self._reconstructed_rvs
+        else:
+            if cov is None:
+                cov = self.model.cov
+            reconstructed_rvs = np.apply_along_axis(
+                lambda mean: multivariate_normal.rvs(mean, cov), 1, self._posterior_rvs
             )
-            return (self.sample_weight * distances).sum()
 
-        mean = self.model.mean[self.indices] if mean is None else mean
-        cov = self.model.cov[self.indices][:, self.indices] if cov is None else cov
-        return expected_wasserstein_distance(
-            mean, cov, self.posterior_mean_rvs, self.sample_weight, **kwargs
+        distances = np.apply_along_axis(
+            lambda rv: wasserstein_distance(rv, mean, **kwargs), 1, reconstructed_rvs
         )
+        return (self._sample_weight * distances).sum()
 
     def likelihood(self, mean: Numeric1DArray = None, cov: np.ndarray = None) -> float:
-        """Compute the likelihood of observing the sample means.
-
+        """
         Args:
-            mean (Numeric1DArray, optional): (n,) array of sample means. Defaults to
+            mean (Numeric1DArray, optional): (# params,) array of sample conventionally
+                estimated means. If None, use the model's estimated means. Defaults to
                 None.
-            cov (np.ndarray, optional): (n, n) covariance matrix for sample means.
-                Defaults to None.
+            cov (np.ndarray, optional): (# params, # params) covaraince matrix for
+                conventionally estimated means. If None, use the model's estimated
+                covariance matrix. Defaults to None.
 
         Returns:
             float: Likelihood.
-
-        Note:
-            ``mean`` and ``cov`` are taken to be the mean and covariance used to fit the
-            model by default, giving you the in-sample likelihood.
         """
-        mean = self.model.mean[self.indices] if mean is None else mean
-        cov = self.model.cov[self.indices][:, self.indices] if cov is None else cov
-        likelihood = np.apply_along_axis(
-            lambda params: multivariate_normal(params, cov).pdf(mean),
-            1,
-            self.posterior_mean_rvs,
-        )
-        return (self.sample_weight * likelihood).sum()
+        if mean is None:
+            mean = self.model.mean
+        if cov is None:
+            cov = self.model.cov
 
-    def rank_matrix_plot(self, *args: Any, title: str = None, **kwargs: Any):
+        return (
+            self._sample_weight * multivariate_normal.pdf(self._posterior_rvs, mean, cov)
+        ).sum()
+
+    def line_plot(
+        self,
+        column: ColumnType = None,
+        alpha: float = 0.05,
+        title: str = None,
+        yname: str = None,
+    ):
+        """Create a line plot of the prior, conventional, and posterior estimates.
+
+        Args:
+            column (ColumnType, optional): Selected parameter. Defaults to None.
+            alpha (float, optional): Sets the plot width. 0 is as wide as possible, 1 is
+                as narrow as possible. Defaults to .05.
+            title (str, optional): Plot title. Defaults to None.
+            yname (str, optional): Name of the dependent variable. Defaults to None.
+
+        Returns:
+            AxesSubplot: Plot.
+        """
+        index = self.model.get_index(column)
+        prior = self.model.get_marginal_prior(index)
+        posterior = self.marginal_distributions[index]
+        conventional = norm(
+            self.model.mean[index], np.sqrt(self.model.cov[index, index])
+        )
+        xlim = np.array(
+            [
+                dist.ppf([alpha / 2, 1 - alpha / 2])
+                for dist in (prior, conventional, posterior)
+            ]
+        ).T
+        x = np.linspace(xlim[0].min(), xlim[1].max())
+        palette = sns.color_palette()
+        ax = sns.lineplot(x=x, y=prior.pdf(x), label="prior")
+        ax.axvline(prior.mean(), linestyle="--", color=palette[0])
+        sns.lineplot(x=x, y=conventional.pdf(x), label="conventional")
+        ax.axvline(conventional.mean(), linestyle="--", color=palette[1])
+        sns.lineplot(x=x, y=posterior.pdf(x), label="posterior")
+        ax.axvline(posterior.mean(), linestyle="--", color=palette[2])
+        ax.set_title(title or self.model.exog_names[index])
+        ax.set_xlabel(yname or self.model.endog_names)
+        return ax
+
+    def rank_matrix_plot(self, title: str = None, **kwargs: Any):
         """Plot a heatmap of the rank matrix.
 
         Args:
             title (str, optional): Plot title. Defaults to None.
-            *args (Any): Passed to ``sns.heatmap``.
             **kwargs (Any): Passed to ``sns.heatmap``.
 
         Returns:
             AxesSubplot: Heatmap.
         """
-        ax = sns.heatmap(
-            self.rank_matrix, center=1 / self.params.shape[0], *args, **kwargs
-        )
-        ax.set_title(title or self.title)
-        return ax
-
-    def reconstruction_histogram(
-        self,
-        yname: str = None,
-        title: str = None,
-        ax=None,
-    ):
-        """Create a histogram of the reconstructed means.
-
-        Plots the distribution of sample means you would expect to see if this model
-        were correct.
-
-        Args:
-            yname (str, optional): Name of the endogenous variable. Defaults to None.
-            title (str, optional): Plot title. Defaults to None.
-            ax: (AxesSubplot, optional): Axis to write on.
-
-        Returns:
-            plt.axes._subplots.AxesSubplot: Plot.
-        """
-        params = np.sort(self.reconstructed_mean_rvs).mean(axis=0)
-
-        if ax is None:
-            _, ax = plt.subplots()
-        sns.histplot(
-            x=list(self.model.mean) + list(params),
-            hue=len(self.model.mean) * ["Observed"] + len(params) * ["Reconstructed"],
-            stat="probability",
-            kde=True,
-            ax=ax,
-        )
-        ax.set_title(title or f"{self.title} reconstruction plot")
-        ax.set_xlabel(yname or self.model.endog_names)
-
+        ax = sns.heatmap(self.rank_df, center=1 / self.model.n_params, **kwargs)
+        ax.set_title(title or f"{self.title} rank matrix")
         return ax
 
     def reconstruction_point_plot(
@@ -292,17 +221,18 @@ class BayesResults(ResultsBase):
         Returns:
             plt.axes._subplots.AxesSubplot: Plot.
         """
-        reconstructed_means = -np.sort(-self.reconstructed_mean_rvs)
-        params = reconstructed_means.mean(axis=0)
+        reconstructed_means = -np.sort(-self._reconstructed_rvs)
+        params = np.average(reconstructed_means, axis=0, weights=self._sample_weight)
 
-        weighted_quantile_func = partial(
+        conf_int = np.apply_along_axis(
             weighted_quantile,
+            0,
+            reconstructed_means,
             quantiles=[alpha / 2, 1 - alpha / 2],
-            sample_weight=self.sample_weight,
-        )
-        conf_int = np.apply_along_axis(weighted_quantile_func, 0, reconstructed_means).T
+            sample_weight=self._sample_weight,
+        ).T
 
-        xname = xname or np.arange(len(self.indices))
+        xname = xname or np.arange(self.model.n_params)
         yticks = np.arange(len(xname), 0, -1)
         if ax is None:
             _, ax = plt.subplots()
@@ -322,42 +252,74 @@ class BayesResults(ResultsBase):
 
         return ax
 
-    def _compute_rank_matrix(self, singular: bool = False) -> pd.DataFrame:
-        """Compute the rank matrix
+    def _make_summary_header(self, alpha: float) -> list[str]:
+        return ["coef", "pvalue (1-sided)", f"[{alpha/2}", f"{1-alpha/2}]"]
+
+
+class BayesBase(ModelBase):
+    """Mixin for Bayesian models.
+
+    Subclasses :class:`conditional_inference.base.ModelBase`.
+    """
+
+    _results_cls = BayesResults
+
+    def get_marginal_prior(self, column: ColumnType) -> rv_continuous:
+        """Get the marginal prior distribution of ``column``.
 
         Args:
-            singular (bool, optional): Indicates the posterior covariance matrix is
-                singular. Defaults to False.
+            column (ColumnType): Name or index of the parameter of interest.
 
         Returns:
-            pd.DataFrame: Rank matrix.
+            rv_continuous: Prior distribution
         """
-        if len(self.posterior_mean_rvs.shape) == 1:
-            # only estimating one parameter
-            rank_matrix = [1]
-        elif not singular:
-            # assumes no ties in rank order
-            argsort = np.argsort(-self.posterior_mean_rvs, axis=1)
-            rank_matrix = np.array(
-                [
-                    ((argsort == k).T * self.sample_weight).sum(axis=1)
-                    for k in range(self.posterior_mean_rvs.shape[1])
-                ]
-            ).T
-        else:
-            # handles ties when posterior covariance matrix is singular
-            rank_matrix = np.zeros((self.params.shape[0], self.params.shape[0]))
-            params = self.params.copy()
-            curr_rank = 0
-            while params.shape[0] > 0:
-                idx = np.where(self.params == params.max())[0]
-                rank = (curr_rank + np.arange(idx.shape[0])).astype(int)
-                for i in idx:
-                    rank_matrix[rank, i] = 1 / idx.shape[0]
-                curr_rank += idx.shape[0]
-                params = params[params != params.max()]
-        rank_df = pd.DataFrame(
-            rank_matrix, columns=[self.model.exog_names[k] for k in self.indices]
-        )
-        rank_df.index.name = "Rank"
-        return rank_df
+        return self._get_marginal_prior(self.get_index(column))
+
+    def _get_marginal_prior(self, index: int) -> rv_continuous:
+        """Private version of :meth:`self.get_marginal_prior`."""
+        raise NotImplementedError()
+
+    def get_marginal_distribution(self, column: ColumnType) -> rv_continuous:
+        """Get the marginal posterior distribution of ``column``.
+
+        Args:
+            column (ColumnType): Name or index of the parameter of interest.
+
+        Returns:
+            rv_continuous: Posterior distribution.
+        """
+        return self._get_marginal_distribution(self.get_index(column))
+
+    def _get_marginal_distribution(self, index: int) -> rv_continuous:
+        """Private version of :meth:`self.get_marginal_distribution`."""
+        raise NotImplementedError()
+
+    def get_joint_prior(self, columns: ColumnsType = None):
+        """Get the joint prior distribution.
+
+        Args:
+            columns (ColumnsType, optional): Selected columns. Defaults to None.
+
+        Returns:
+            rv_like: Joint distribution.
+        """
+        return self._get_joint_prior(self.get_indices(columns))
+
+    def _get_joint_prior(self, indices: np.ndarray):
+        """Private version of :meth:`self.get_joint_prior`."""
+        return joint_distribution([self.get_marginal_prior(i) for i in indices])
+
+    def get_joint_distribution(self, columns: ColumnsType = None):
+        """Get the joint posterior distribution.
+
+        Args:
+            columns (ColumnsType, optional): Selected columns. Defaults to None.
+
+        Returns:
+            rv_like: Joint distribution.
+        """
+        return self._get_joint_distribution(self.get_indices(columns))
+
+    def _get_joint_distribution(self, indices: np.ndarray):
+        """Private version of :meth:`self.get_joint_distribution`."""
+        raise NotImplementedError()

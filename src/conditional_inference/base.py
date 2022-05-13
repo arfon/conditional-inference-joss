@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any, List, Sequence, Type, TypeVar, Union
+from typing import Any, List, Optional, Sequence, Type, TypeVar, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,273 +16,10 @@ from statsmodels.iolib.table import SimpleTable
 # https://github.com/python/mypy/issues/6799
 
 ColumnType = Union[str, int]
-ColumnsType = Sequence[ColumnType]
+ColumnsType = Union[Sequence[int], Sequence[str], Sequence[bool]]
 ModelType = TypeVar("ModelType", bound="ModelBase")
 Numeric1DArray = Sequence[float]
 ResultsType = TypeVar("ResultsType", bound="ResultsBase")
-
-
-class ConventionalEstimatesData:
-    """Data store for conventional estimates.
-
-    Args:
-        mean (Numeric1DArray): (n,) array of means.
-        cov (np.ndarray): (n,n) covariance matrix.
-        endog_names (str, optional): Name of endogenous variable. Defaults to None.
-        exog_names (Sequence[str], optional): Name of exogenous variables. Defaults to None.
-
-    Attributes:
-        mean (Numeric1DArray): (n,) array of means.
-        cov (np.ndarray): (n,n) covariance matrix.
-        endog_names (str, optional): Name of endogenous variable.
-        exog_names (Sequence[str], optional): Name of exogenous variables.
-    """
-
-    def __init__(
-        self,
-        mean: Numeric1DArray,
-        cov: np.ndarray,
-        endog_names: str = None,
-        exog_names: Sequence[str] = None,
-    ):
-        self.mean_orig = self.mean = mean
-        self.cov = cov * np.identity(len(mean)) if np.isscalar(cov) else cov
-        self.endog_names = endog_names
-        self.exog_names = exog_names
-
-    @property
-    def mean(self):  # pylint: disable=missing-function-docstring
-        return self._mean
-
-    @mean.setter
-    def mean(self, mean: Numeric1DArray):  # pylint: disable=missing-function-docstring
-        self._mean = np.atleast_1d(mean)
-
-    @property
-    def endog_names(self):  # pylint: disable=missing-function-docstring
-        return "y" if self._endog_names is None else self._endog_names
-
-    @endog_names.setter
-    def endog_names(
-        self, endog_names: str
-    ):  # pylint: disable=missing-function-docstring
-        self._endog_names = endog_names
-
-    @property
-    def exog_names(self):  # pylint: disable=missing-function-docstring
-        if self._exog_names is not None:
-            return self._exog_names
-        if hasattr(self.mean_orig, "index") and hasattr(
-            self.mean_orig.index, "to_list"
-        ):
-            # assume mean is pd.Series-like
-            return self.mean_orig.index.to_list()
-        zfill = int(np.log10(len(self.mean)))
-        return [f"x{str(i).zfill(zfill)}" for i in range(len(self.mean))]
-
-    @exog_names.setter
-    def exog_names(
-        self, exog_names: Sequence[str]
-    ):  # pylint: disable=missing-function-docstring
-        self._exog_names = exog_names
-
-
-class ModelBase:
-    """Base for model classes.
-
-    Args:
-        mean (Numeric1DArray): (n,) array of means from conventional estimation.
-        cov (np.ndarray): (n, n) covariance matrix.
-        *args (Any): Passed to :class:`ConventionalEstimatesData`.
-        seed (int, optional): Random seed. Defaults to 0.
-        **kwargs (Any): Passed to :class:`ConventionalEstimatesData`.
-
-    Attributes:
-        data (ConventionalEstimatesData): Conventional estimates data.
-        seed (int): Random seed.
-
-    Notes:
-        Properties of :class:`ConventionalEstimatesData` can be accessed directly, e.g.,
-
-        .. doctest::
-
-            >>> from conditional_inference.base import ModelBase
-            >>> import numpy as np
-            >>> model = ModelBase([1, 2, 3], np.identity(3))
-            >>> model.mean
-            array([1, 2, 3])
-    """
-
-    _data_properties = [
-        "mean",
-        "cov",
-        "endog_names",
-        "exog_names",
-    ]
-
-    def __init__(
-        self,
-        mean: Numeric1DArray,
-        cov: np.ndarray,
-        *args: Any,
-        seed: int = 0,
-        **kwargs: Any,
-    ):
-        self.data = ConventionalEstimatesData(mean, cov, *args, **kwargs)
-        self.seed = seed
-
-    def __getattribute__(self, key):
-        if key != "_data_properties" and key in self._data_properties:
-            return getattr(self.data, key)
-        return super().__getattribute__(key)
-
-    def __setattr__(self, key, val):
-        if key in self._data_properties:
-            setattr(self.data, key, val)
-        else:
-            super().__setattr__(key, val)
-
-    @classmethod
-    def from_results(
-        cls: Type[ModelType],
-        results: LikelihoodModelResults,
-        *args,
-        cols: ColumnsType = None,
-        **kwargs,
-    ) -> ModelType:
-        """Instantiate an estimator from conventional regression results.
-
-        Args:
-            results (LikelihoodModelResults): Conventional likelihood model estimates.
-            *args (Any): Passed to the model class constructor.
-            cols (ColumnsType, optional): Names or indices of the policy variables. Defaults to
-                None.
-            **kwargs (Any): Passed to the model class constructor.
-
-        Returns:
-            Model: Estimator.
-
-        Examples:
-
-            .. code-block::
-
-                >>> from conditional_inference.base import ModelBase
-                >>> import numpy as np
-                >>> import statsmodels.api as sm
-                >>> X = np.repeat(np.identity(3), 100, axis=0)
-                >>> beta = np.array([0, 1, 2])
-                >>> y = X @ beta + np.random.normal(size=300)
-                >>> ols_results = sm.OLS(y, X).fit()
-                >>> model = ModelBase.from_results(ols_results)
-                >>> model.mean
-                array([-0.20434022,  0.96700821,  1.88196662])
-                >>> model.cov
-                array([[0.01163716, 0.        , 0.        ],
-                       [0.        , 0.01163716, 0.        ],
-                       [0.        , 0.        , 0.01163716]])
-        """
-
-        def get_index(col: Union[str, int]) -> int:
-            if isinstance(col, str):
-                return results.model.exog_names.index(col)
-            if np.isscalar(col):
-                return int(col)
-            raise ValueError(
-                f"Invalid column type {type(col)} for column {col}"
-            )  # pragma: no cover
-
-        if cols is None:
-            indices = np.arange(results.params.shape[0])
-            exog_names = results.model.exog_names
-        else:
-            indices = np.array([get_index(col) for col in cols])
-            exog_names = [results.model.exog_names[i] for i in indices]
-
-        cov = results.cov_params()
-        if isinstance(cov, pd.DataFrame):
-            cov = cov.values
-
-        return cls(
-            pd.Series(results.params[indices], index=exog_names),
-            cov[indices][:, indices],
-            endog_names=kwargs.pop("endog_names", results.model.endog_names),
-            *args,
-            **kwargs,
-        )
-
-    @classmethod
-    def from_csv(
-        cls: Type[ModelType],
-        filename: str,
-        *args: Any,
-        cols: ColumnsType = None,
-        **kwargs: Any,
-    ) -> ModelType:
-        """Instantiate an estimator from csv file.
-
-        Args:
-            filename (str): Name of the csv file.
-            *args (Any): Passed to the model class constructor.
-            cols (ColumnsType, optional): Names or indices of the policy variables. Defaults to
-                None.
-            **kwargs (Any): Passed to the model class constructor.
-
-        Returns:
-            Model: Estimator.
-        """
-
-        def get_index(col: Union[str, int]) -> int:
-            if isinstance(col, str):
-                return exog_names.index(col)
-            if np.isscalar(col):
-                return int(col)
-            raise ValueError(
-                f"Invalid column type {type(col)} for column {col}"
-            )  # pragma: no cover
-
-        df = pd.read_csv(filename)
-        mean, cov = df.values[:, 0], df.values[:, 1:]  # pylint: disable=no-member
-        endog_names, exog_names = (
-            df.columns[0],  # pylint: disable=no-member
-            df.columns[1:],  # pylint: disable=no-member
-        )
-
-        # select columns
-        if cols is None:
-            indices = np.arange(len(df))
-        else:
-            indices = np.array([get_index(col) for col in cols])
-            exog_names = [exog_names[i] for i in indices]
-
-        return cls(
-            pd.Series(mean[indices], index=exog_names),
-            cov[indices][:, indices],
-            endog_names=kwargs.pop("endog_names", endog_names),
-            *args,
-            **kwargs,
-        )
-
-    def get_indices(self, cols: ColumnsType = None) -> np.ndarray:
-        """Get indices associated with columns.
-
-        Args:
-            cols (ColumnsType, optional): Column names or indices. Defaults to None.
-
-        Returns:
-            np.ndarray: Indices of requested columns.
-        """
-        if cols is None:
-            return np.arange(self.mean.shape[0])
-
-        if isinstance(cols, str):
-            if cols == "sorted":
-                return (-self.mean).argsort()
-            return np.array([self._get_index(cols)])
-
-        return np.array([self._get_index(col) for col in cols])
-
-    def _get_index(self, col: ColumnType) -> int:
-        return self.exog_names.index(col) if isinstance(col, str) else col
 
 
 class ResultsBase:
@@ -290,47 +27,55 @@ class ResultsBase:
 
     Args:
         model (ModelBase): Model on which the results are based.
-        cols (ColumnsType, optional): Columns of interest. Defaults to None.
         title (str, optional): Results title. Defaults to "Estimation results".
     """
 
+    _default_title = "Estimation results"
+
     def __init__(
         self,
-        model: ModelBase,
-        cols: ColumnsType = None,
-        title: str = "Estimation results",
+        model: ModelType,
+        title: str = None,
     ):
         self.model = model
-        self.indices = model.get_indices(cols)
-        self.xname = np.array(model.exog_names)[self.indices]
-        self.n_policies = len(self.indices)
-        self.pvalues = np.full(self.n_policies, np.nan)
+        if not hasattr(self, "pvalues"):
+            self.pvalues = np.full(len(model.mean), np.nan)
         self.title = title
+        self._conf_int_cached = {}
 
-    def conf_int(self, alpha: float = 0.05, cols: ColumnsType = None) -> np.ndarray:
+    @property
+    def title(self) -> str:
+        return self._title or self._default_title
+
+    @title.setter
+    def title(self, title: str) -> None:
+        self._title = title
+
+    def conf_int(
+        self, alpha: float = 0.05, columns: ColumnsType = None, **kwargs: Any
+    ) -> np.ndarray:
         """Compute the 1-alpha confidence interval.
 
         Args:
-            alpha (float, optional): The CI will cover the truth with probability 1-alpha. Defaults
-                to 0.05.
-            cols (ColumnsType, optional): Names or indices of policies of interest. Defaults to
-                None.
+            alpha (float, optional): The CI will cover the truth with probability
+                1-alpha. Defaults to 0.05.
+            columns (ColumnsType, optional): Selected columns. Defaults to None.
 
         Returns:
-            np.ndarray: (n,2) array of confidence intervals.
+            np.ndarray: (# params, 2) array of confidence intervals.
         """
-        if not hasattr(self, "distributions"):
-            raise AttributeError(
-                "Results object does not have `distributions` attribute."
-            )
+        return self._conf_int(alpha, self.model.get_indices(columns), **kwargs)
 
-        if not hasattr(self, "params"):
-            raise AttributeError("Results object does not have `params` attribute.")
+    def _conf_int(self, alpha: float, indices: np.array) -> np.ndarray:
+        if not hasattr(self, "marginal_distributions"):
+            raise AttributeError(
+                "Results object does not have `marginal_distributions` attribute."
+            )
 
         return np.array(
             [
-                self.distributions[i].ppf([alpha / 2, 1 - alpha / 2])
-                for i in self._get_indices(cols)
+                self.marginal_distributions[i].ppf([alpha / 2, 1 - alpha / 2])
+                for i in indices
             ]
         )
 
@@ -340,54 +85,57 @@ class ResultsBase:
         xname: Sequence[str] = None,
         title: str = None,
         alpha: float = 0.05,
+        columns: ColumnsType = None,
+        spacing: float = 1,
         ax=None,
     ):
         """Create a point plot.
 
         Args:
             yname (str, optional): Name of the endogenous variable. Defaults to None.
-            xname (Sequence[str], optional): Names of the policies. Defaults to None.
+            xname (Sequence[str], optional): (# params,) sequence of parameter names.
+                Defaults to None.
             title (str, optional): Plot title. Defaults to None.
-            alpha: (float, optional): Plot the 1-alpha CI. Defaults to 0.05.
+            alpha (float, optional): Plot the 1-alpha CI. Defaults to 0.05.
+            columns (ColumnsType, optional): Selected columns. Defaults to None.
+            spacing (float): Spacing on the horizontal axis. Defaults to 1.
             ax: (AxesSubplot, optional): Axis to write on.
 
         Returns:
-            plt.axes._subplots.AxesSubplot: Plot.
+            AxesSubplot: Plot.
         """
+
         if not hasattr(self, "params"):
             raise AttributeError("Results object does not have `params` attribute.")
 
-        conf_int = self.conf_int(alpha)
-        xname = xname or self.xname
-        yticks = np.arange(len(xname), 0, -1)
+        indices = self.model.get_indices(columns)
+        params = self.params[indices]
+        conf_int = self.conf_int(alpha, columns)
+        yticks = spacing * np.arange(len(indices), 0, -1)
 
         if ax is None:
             _, ax = plt.subplots()
         ax.errorbar(
-            x=self.params,  # type: ignore, pylint: disable=no-member
+            x=params,  # type: ignore, pylint: disable=no-member
             y=yticks,
-            xerr=[self.params - conf_int[:, 0], conf_int[:, 1] - self.params],  # type: ignore, pylint: disable=no-member
+            xerr=[params - conf_int[:, 0], conf_int[:, 1] - params],  # type: ignore, pylint: disable=no-member
             fmt="o",
         )
         ax.set_title(title or self.title)
         ax.set_xlabel(yname or self.model.endog_names)
         ax.set_yticks(yticks)
-        ax.set_yticklabels(xname)
+        ax.set_yticklabels(self.model.exog_names[indices] if xname is None else xname)
 
         return ax
 
-    def save(self: ResultsType, fname: str) -> ResultsType:
+    def save(self: ResultsType, filename: str) -> None:
         """Pickle results.
 
         Args:
-            fname (str): File name.
-
-        Returns:
-            ResultsType: self.
+            filename (str): File name.
         """
-        with open(fname, "wb") as results_file:
+        with open(filename, "wb") as results_file:
             pickle.dump(self, results_file)
-        return self
 
     def summary(
         self,
@@ -395,6 +143,7 @@ class ResultsBase:
         xname: Sequence[str] = None,
         title: str = None,
         alpha: float = 0.05,
+        columns: ColumnsType = None,
     ) -> Summary:
         """Create a summary table.
 
@@ -405,6 +154,7 @@ class ResultsBase:
             title (str, optional): Table title. Defaults to None.
             alpha (float, optional): Display 1-alpha confidence interval. Defaults to
                 0.05.
+            columns (ColumnsType, optional): Selected columns. Defaults to None.
 
         Returns:
             Summary: Summary table.
@@ -412,36 +162,22 @@ class ResultsBase:
         if not hasattr(self, "params"):
             raise AttributeError("Results object does not have `params` attribute.")
 
+        indices = self.model.get_indices(columns)
         params_header = self._make_summary_header(alpha)
         params_data = np.hstack(
-            (np.array([self.params, self.pvalues]).T, self.conf_int(alpha))  # type: ignore, pylint: disable=no-member
+            (np.array([self.params, self.pvalues]).T[indices], self.conf_int(alpha, columns))  # type: ignore, pylint: disable=no-member
         )
         return self._make_summary(
             params_header,
             params_data,
             yname=yname,
-            xname=xname,
+            xname=self.model.exog_names[indices] if xname is None else xname,
             title=title,
         )
 
-    def _get_indices(self, cols: ColumnsType = None) -> np.ndarray:
-        """Get the requested indices relative the result parameters.
-
-        Note: Returned indices are relative to the result parameters, not relative to
-        the model means.
-
-        Args:
-            cols (ColumnsType, optional): Columns to get. Defaults to None.
-
-        Returns:
-            np.ndarray: (# columns,) array of indices.
-        """
-        indices = self.indices if cols is None else self.model.get_indices(cols)
-        return [np.where(self.indices == index)[0][0] for index in indices]
-
     def _make_summary(
         self,
-        params_header: List[str],
+        params_header: list[str],
         params_data: np.ndarray,
         yname: str = None,
         xname: Sequence[str] = None,
@@ -450,7 +186,7 @@ class ResultsBase:
         """Create a summary table.
 
         Args:
-            params_header (List[str]): Table header
+            params_header (list[str]): Table header
             params_data (np.ndarray): Table data.
             yname (str, optional): Name of the endogenous variable. Defaults to None.
             xname (Sequence[str], optional): Names of the exogenous variables. Defaults to None.
@@ -459,7 +195,7 @@ class ResultsBase:
         Returns:
             Summary: Summary table.
         """
-        params_stubs = xname or list(self.xname)
+        params_stubs = list(self.model.exog_names if xname is None else xname)
         params_data_str = [[f"{val:.3f}" for val in row] for row in params_data]
 
         smry = Summary()
@@ -478,7 +214,276 @@ class ResultsBase:
 
         return smry
 
-    def _make_summary_header(self, alpha: float) -> List[str]:
+    def _make_summary_header(self, alpha: float) -> list[str]:
         # make the header for the summary table
         # when subclassing ResultsBase, you may wish to overwrite this method
         return ["coef", "pvalue", f"[{alpha/2}", f"{1-alpha/2}]"]
+
+
+class ModelBase:
+    """Base for model classes.
+
+    Args:
+        mean (Numeric1DArray): (# params,) array of conventionally estimated means.
+        cov (np.ndarray): (# params, # params) covariance matrix.
+        X (np.ndarray, optional): (# params, # features) feature matrix. Defaults to
+            None.
+        endog_names (str, optional): Name of endogenous variable. Defaults to None.
+        exog_names (Sequence[str], optional): Names of the exogenous variables. Defaults
+            to None.
+        columns (ColumnsType, optional): Columns to use. This can be a sequence of
+            indices (int), parameter names (str), or a Boolean mask. Defaults to None.
+        sort (bool, optional): Sort the parameters by the conventionally estimated
+            mean. Defaults to False.
+        seed (int, optional): Random seed. Defaults to 0.
+
+    Attributes:
+        n_params (int): Number of estimated parameters.
+        mean (np.ndarray): (# params,) array of conventionally estimated means.
+        cov (np.ndarray): (# params, # params) covariance matrix.
+        X (np.ndarray): (# params, # features) feature matrix.
+        endog_names (str): Name of the endogenous variable.
+        exog_names (np.ndarray): Name of exogenous variables.
+        seed (int): Random seed.
+    """
+
+    _results_cls = ResultsBase
+
+    def __init__(
+        self,
+        mean: Numeric1DArray,
+        cov: np.ndarray,
+        X: np.ndarray = None,
+        endog_names: str = None,
+        exog_names: Sequence[str] = None,
+        columns: ColumnsType = None,
+        sort: bool = False,
+        random_state: int = 0,
+    ):
+        self.mean = mean
+        self.n_params = len(self.mean) if columns is None else len(columns)
+        self.cov = cov * np.identity(self.n_params) if np.isscalar(cov) else cov
+        self.X = np.ones((len(self.mean), 1)) if X is None else X
+        self.endog_names = endog_names
+        if exog_names is None and isinstance(mean, pd.Series):
+            self.exog_names = np.array(mean.index)
+        else:
+            self.exog_names = exog_names
+        self.random_state = random_state
+
+        # select columns
+        indices = self.get_indices(columns)
+        self.mean = self.mean[indices]
+        self.cov = self.cov[indices][:, indices]
+        self.X = self.X[indices]
+        if exog_names is not None or isinstance(mean, pd.Series):
+            self.exog_names = self.exog_names[indices]
+
+        # sort columns
+        if sort:
+            argsort = (-self.mean).argsort()
+            self.mean = self.mean[argsort]
+            self.cov = self.cov[argsort][:, argsort]
+            self.X = self.X[argsort]
+            if exog_names is not None or isinstance(mean, pd.Series):
+                self.exog_names = self.exog_names[argsort]
+
+    @property
+    def mean(self) -> np.ndarray:  # pylint: disable=missing-function-docstring
+        return self._mean
+
+    @mean.setter
+    def mean(
+        self, mean: Numeric1DArray
+    ) -> None:  # pylint: disable=missing-function-docstring
+        self._mean = np.atleast_1d(mean)
+
+    @property
+    def cov(self) -> np.ndarray:
+        return self._cov
+
+    @cov.setter
+    def cov(self, cov: np.ndarray) -> None:
+        self._cov = np.atleast_2d(cov)
+
+    @property
+    def endog_names(self) -> str:  # pylint: disable=missing-function-docstring
+        return "y" if self._endog_names is None else self._endog_names
+
+    @endog_names.setter
+    def endog_names(
+        self, endog_names: str
+    ) -> None:  # pylint: disable=missing-function-docstring
+        self._endog_names = endog_names
+
+    @property
+    def exog_names(self) -> np.ndarray:  # pylint: disable=missing-function-docstring
+        if self._exog_names is not None:
+            return self._exog_names
+        zfill = int(np.log10(max(1, len(self.mean) - 1))) + 1
+        return np.array([f"x{str(i).zfill(zfill)}" for i in range(len(self.mean))])
+
+    @exog_names.setter
+    def exog_names(
+        self, exog_names: Optional[Sequence[str]]
+    ) -> None:  # pylint: disable=missing-function-docstring
+        self._exog_names = None if exog_names is None else np.atleast_1d(exog_names)
+
+    @classmethod
+    def from_results(
+        cls: Type[ModelType],
+        results: LikelihoodModelResults,
+        **kwargs: Any,
+    ) -> ModelType:
+        """Initialize an estimator from conventional regression results.
+
+        Args:
+            results (LikelihoodModelResults): Conventional estimation results.
+            **kwargs (Any): Passed to the model class constructor.
+
+        Returns:
+            Model: Estimator.
+
+        Examples:
+
+            .. testcode::
+
+                import numpy as np
+                import pandas as pd
+                import statsmodels.api as sm
+                from conditional_inference.base import ModelBase
+
+                X = np.repeat(np.identity(3), 100, axis=0)
+                beta = np.arange(3)
+                y = X @ beta + np.random.normal(size=300)
+                ols_results = sm.OLS(y, X).fit()
+                model = ModelBase.from_results(ols_results)
+                print(model.mean)
+                print(model.cov)
+
+            .. testoutput::
+
+                [0.05980802 1.08201297 1.94076774]
+                [[0.01007633 0.         0.        ]
+                 [0.         0.01007633 0.        ]
+                 [0.         0.         0.01007633]]
+        """
+        cov = results.cov_params()
+        if isinstance(cov, pd.DataFrame):
+            cov = cov.values
+
+        return cls(
+            results.params,
+            cov,
+            endog_names=kwargs.pop("endog_names", results.model.endog_names),
+            exog_names=kwargs.pop("exog_names", results.model.exog_names),
+            **kwargs,
+        )
+
+    @classmethod
+    def from_csv(
+        cls: Type[ModelType],
+        filename: str,
+        **kwargs: Any,
+    ) -> ModelType:
+        """Instantiate an estimator from csv file.
+
+        Args:
+            filename (str): Name of the csv file.
+            **kwargs (Any): Passed to the model class constructor.
+
+        Returns:
+            Model: Estimator.
+        """
+        df = pd.read_csv(filename)
+        mean, cov = df.values[:, 0], df.values[:, 1:]  # pylint: disable=no-member
+        endog_names, exog_names = (
+            df.columns[0],  # pylint: disable=no-member
+            df.columns[1:],  # pylint: disable=no-member
+        )
+
+        return cls(
+            mean,
+            cov,
+            endog_names=kwargs.pop("endog_names", endog_names),
+            exog_names=kwargs.pop("exog_names", exog_names),
+            **kwargs,
+        )
+
+    def to_csv(self, filename: str) -> None:
+        """Write data to a csv.
+
+        Args:
+            filename (str): Name of the file to write to.
+        """
+        pd.DataFrame(
+            np.hstack((self.mean.reshape(-1, 1), self.cov)),
+            columns=[self.endog_names] + list(self.exog_names),
+        ).to_csv(filename, index=False)
+
+    def fit(self, *args: Any, **kwargs: Any) -> ResultsType:
+        """Fit the model.
+
+        Args:
+            *args (Any): Passed to the results class constructor.
+            **kwargs (Any): Passed to the results class constructor.
+
+        Returns:
+            ResultsType: Results.
+        """
+        return self._results_cls(self, *args, **kwargs)
+
+    def get_index(self, column: ColumnType, names: Sequence[str] = None) -> int:
+        """Get the index of a selected column.
+
+        Args:
+            column (ColumnType): Index or name of selected column.
+            names (Sequence[str], optional): (# params,) sequence of names to select
+                from.
+
+        Returns:
+            int: Index.
+        """
+        try:
+            return int(column)
+        except:
+            pass
+
+        return list(self.exog_names if names is None else names).index(column)
+
+    def get_indices(
+        self, columns: ColumnsType = None, names: Sequence[str] = None
+    ) -> np.ndarray:
+        """Get indices of the selected columns.
+
+        Args:
+            columns (ColumnsType, optional): Sequence of columns to select. The
+            sequence can be a (# selected params,) sequence of column names (str) or
+            indices (int), or a (# params,) boolean mask. Defaults to None.
+            names (Sequence[str], optional): (# params,) sequence of names to select
+                from.
+
+        Returns:
+            np.ndarray: (# selected params,) array of indices.
+        """
+        if names is None:
+            names = self.exog_names
+
+        if columns is None:
+            return np.arange(len(names)).astype(int)
+
+        cols = np.atleast_1d(columns)
+        if cols.dtype == np.dtype("float"):
+            cols = cols.astype(int)
+
+        if cols.dtype == np.dtype(int):
+            # cols is a sequence of indices
+            return cols
+
+        if cols.dtype == np.dtype(bool):
+            # cols is a boolean mask
+            return np.where(cols)[0]
+
+        # cols are the parameter names (exogenous variables)
+        sorter = np.argsort(names)
+        return sorter[np.searchsorted(names, cols, sorter=sorter)]

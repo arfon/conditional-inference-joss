@@ -17,15 +17,5 @@ conditional\_inference.base
 
    .. autosummary::
    
-      ConventionalEstimatesData
-      ModelBase
       ResultsBase
-   
-   
-
-   
-   
-   
-
-
-
+      ModelBase

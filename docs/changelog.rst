@@ -1,6 +1,18 @@
 Changelog
 =========
 
+1.0.0
+-----
+
+- Added nonparametric empirical Bayes
+- Collapsed all normal prior Bayesian estimators (classic, maximum likelihood, and James-Stein) into a single ``Normal`` class
+- Created a separate ``Improper`` class for Bayesian models with an improper prior
+- Moved projection confidence intervals from ``RQU`` to a separate ``condfidence_set.ConfidenceSet`` class
+- Created the ``confidence_set`` module
+- Added non-parametric, mixture, and joint Distributions
+- Added significance conditional analysis
+- Renamed ``RQU`` to the more expressive ``RankCondition``
+
 0.0.3
 -----
 

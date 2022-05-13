@@ -17,7 +17,7 @@ conditional\_inference.bayes.base
 
    .. autosummary::
    
-      BayesModelBase
+      BayesBase
       BayesResults
    
    

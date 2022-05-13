@@ -3,10 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Conditional Inference documentation
-===========================================
+Multiple Inference documentation
+================================
 
-A statistics package for comparing multiple policies or treatments.
+A statistics package for comparing multiple parameters (e.g., multiple treatments, policies, or subgroups).
 
 .. image:: https://gitlab.com/dsbowen/conditional-inference/badges/master/pipeline.svg
    :target: https://gitlab.com/dsbowen/conditional-inference/-/commits/master
@@ -22,20 +22,21 @@ A statistics package for comparing multiple policies or treatments.
    :target: https://github.com/psf/black
 
 |
-Quickstart
+Start here
 ==========
 
-Click the badges below to launch a Jupyter Binder with a ready-to-use virtual environment and boilerplate code.
+Click the badges below to launch a Jupyter Binder with a ready-to-use virtual environment and template code.
 
-Use the following binder for quantile-unbiased analysis.
-
-.. image:: https://mybinder.org/badge_logo.svg
-   :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/rqu.ipynb
-
-| Use the following binder for Bayesian analysis.
+This binder is an 80-20 solution for multiple inference.
 
 .. image:: https://mybinder.org/badge_logo.svg
-   :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/bayes.ipynb
+   :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/multiple_inference.ipynb
+
+| This binder is for inference after ranking.
+
+.. image:: https://mybinder.org/badge_logo.svg
+   :target: https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples/rank_conditions.ipynb
+
 
 |
 Installation
@@ -72,13 +73,6 @@ Citations
       year={ 2021 },
       url={ https://dsbowen.gitlab.io/conditional-inference }
    )
-
-   @techreport{andrews2019inference,
-      title={ Inference on winners },
-      author={ Andrews, Isaiah and Kitagawa, Toru and McCloskey, Adam },
-      year={ 2019 },
-      institution={ National Bureau of Economic Research }
-   }
 
 Acknowledgements
 ================

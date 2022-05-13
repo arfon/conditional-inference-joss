@@ -1,14 +1,37 @@
 """Simultaneous confidence sets and multiple hypothesis testing.
+
+References:
+
+    .. code-block::
+
+        @article{romano2005stepwise,
+            title={Stepwise multiple testing as formalized data snooping},
+            author={Romano, Joseph P and Wolf, Michael},
+            journal={Econometrica},
+            volume={73},
+            number={4},
+            pages={1237--1282},
+            year={2005},
+            publisher={Wiley Online Library}
+        }
+
+        @techreport{mogstad2020inference,
+            title={Inference for ranks with applications to mobility across neighborhoods and academic achievement across countries},
+            author={Mogstad, Magne and Romano, Joseph P and Shaikh, Azeem and Wilhelm, Daniel},
+            year={2020},
+            institution={National Bureau of Economic Research}
+        }
 """
 from __future__ import annotations
 
+from itertools import combinations
 from typing import Any, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal, norm
 
 from conditional_inference.base import ColumnsType, ModelBase, ResultsBase
 
@@ -46,26 +69,29 @@ class ConfidenceSetResults(ResultsBase):
         )  # (# samples, 2 * # params)
         self._rvs /= self._std_diagonal
 
-        params = self.params.reshape(-1, 1).repeat(n_samples, axis=1)
-        arr = self._rvs.max(axis=1) * np.sqrt(self.model.cov.diagonal()).reshape(
-            -1, 1
-        ).repeat(n_samples, axis=1)
-        self.pvalues = np.array(
-            [(params - arr < 0).mean(axis=1), (params + arr > 0).mean(axis=1)]
-        ).min(axis=0)
+        if self.model.n_params == 1:
+            self.pvalues = 2 * np.atleast_1d(
+                norm.cdf(-abs(self.model.mean[0]), 0, np.sqrt(self.model.cov[0, 0]))
+            )
+        else:
+            params = self.params.reshape(-1, 1).repeat(n_samples, axis=1)
+            arr = self._rvs.max(axis=1) * np.sqrt(self.model.cov.diagonal()).reshape(
+                -1, 1
+            ).repeat(n_samples, axis=1)
+            self.pvalues = np.array(
+                [(params - arr < 0).mean(axis=1), (params + arr > 0).mean(axis=1)]
+            ).min(axis=0)
 
-    def conf_int(self, alpha: float = 0.05, columns: ColumnsType = None) -> np.ndarray:
-        """Compute the 1-alpha confidence interval.
+    def _conf_int(self, alpha: float, indices: np.ndarray) -> np.ndarray:
+        if self.model.n_params == 1:
+            return np.atleast_2d(
+                norm.ppf(
+                    [alpha / 2, 1 - alpha / 2],
+                    self.model.mean[0],
+                    np.sqrt(self.model.cov[0, 0]),
+                )
+            )
 
-        Args:
-            alpha (float, optional): Probabiliy that the true value of all parameters
-                will be in the confidence interval. Defaults to 0.05.
-            cols (ColumnsType, optional): Selected columns. Defaults to None.
-
-        Returns:
-            np.ndarray: (# params, 2) array of confidence intervals.
-        """
-        indices = self.model.get_indices(columns)
         params = self.params[indices]
         arr = (
             np.quantile(self._rvs.max(axis=1), 1 - alpha) * self._std_diagonal[indices]
@@ -316,7 +342,7 @@ class PairwiseComparisonResults(ConfidenceSetResults):
                 to True.
 
         Returns:
-            np.ndarray: Results.
+            pd.DataFrame: Results.
         """
         if not wide:
             return super().test_hypotheses(alpha, columns)
@@ -378,6 +404,14 @@ class PairwiseComparisonResults(ConfidenceSetResults):
         plt.yticks(rotation=0)
         return ax
 
+    def _make_summary_header(self, alpha: float) -> list[str]:
+        return [
+            "delta (conventional)",
+            "pvalue",
+            f"{1-alpha} CI lower",
+            f"{1-alpha} CI upper",
+        ]
+
 
 class PairwiseComparison(ConfidenceSet):
     """Compute pairwise comparisons.
@@ -398,13 +432,13 @@ class PairwiseComparison(ConfidenceSet):
         .. testoutput::
             :options: -ELLIPSIS, +NORMALIZE_WHITESPACE
 
-                                 Pairwise comparisons
-            ==============================================================
-                    coef (conventional) pvalue 0.95 CI lower 0.95 CI upper
-            --------------------------------------------------------------
-            x1 - x0               1.000  0.067        -0.045         2.045
-            x2 - x0               2.000  0.000         0.955         3.045
-            x2 - x1               1.000  0.067        -0.045         2.045
+                                  Pairwise comparisons
+            ===============================================================
+                    delta (conventional) pvalue 0.95 CI lower 0.95 CI upper
+            ---------------------------------------------------------------
+            x1 - x0                1.000  0.067        -0.045         2.045
+            x2 - x0                2.000  0.000         0.955         3.045
+            x2 - x1                1.000  0.067        -0.045         2.045
             ===============
             Dep. Variable y
             ---------------
@@ -449,40 +483,32 @@ class PairwiseComparison(ConfidenceSet):
 
 
 class MarginalRankingResults(ResultsBase):
-    """Marginal ranking results.
-
-    Args:
-        model (MarginalRanking): Model.
-    """
+    """Marginal ranking results."""
 
     _default_title = "Marginal ranking"
 
     def __init__(self, model: MarginalRanking, *args: Any, **kwargs: Any):
         super().__init__(model, *args, **kwargs)
-        self.params = (-self.model.mean).argsort().argsort()
+        self.params = (-self.model.mean).argsort().argsort() + 1
         self._baseline_comparisons = [
             BaselineComparison(model.mean, model.cov, baseline=i).fit()
             for i in range(model.n_params)
         ]
 
-    def conf_int(self, alpha: float = 0.05, columns: ColumnsType = None) -> np.array:
-        """Compute the 1-alpha confidence interval.
-
-        Args:
-            alpha (float, optional): The CI will cover the truth with probability
-                1-alpha. Defaults to 0.05.
-            cols (ColumnsType, optional): Selected columns. Defaults to None.
-
-        Returns:
-            np.ndarray: (# params, 2) array of confidence intervals.
-        """
-
+    def _conf_int(self, alpha: float, indices: np.ndarray) -> np.array:
         def get_rank_ci(results):
             hypotheses_count = results.test_hypotheses(alpha).sum(axis=0)
             return [hypotheses_count[0], self.model.n_params - hypotheses_count[1] - 1]
 
-        indices = self.model.get_indices(columns)
-        return np.array([get_rank_ci(self._baseline_comparisons[i]) for i in indices])
+        return np.array([get_rank_ci(self._baseline_comparisons[i]) for i in indices]) + 1
+
+    def _make_summary_header(self, alpha: float) -> list[str]:
+        return [
+            "rank (conventional)",
+            "pvalue",
+            f"{1-alpha} CI lower",
+            f"{1-alpha} CI upper",
+        ]
 
 
 class MarginalRanking(ConfidenceSet):
@@ -504,17 +530,170 @@ class MarginalRanking(ConfidenceSet):
             print(results.summary())
 
         .. testoutput::
+            :options: -ELLIPSIS, +NORMALIZE_WHITESPACE
 
-                   Marginal ranking      
-            =============================
-                coef pvalue [0.025 0.975]
-            -----------------------------
-            x0 2.000    nan  1.000  2.000
-            x1 1.000    nan  0.000  2.000
-            x2 0.000    nan  0.000  1.000
+                              Marginal ranking
+            =========================================================
+               rank (conventional) pvalue 0.95 CI lower 0.95 CI upper
+            ---------------------------------------------------------
+            x0               2.000    nan         1.000         2.000
+            x1               1.000    nan         0.000         2.000
+            x2               0.000    nan         0.000         1.000
             ===============
             Dep. Variable y
             ---------------
+
     """
 
     _results_cls = MarginalRankingResults
+
+
+class SimultaneousRankingResults(ResultsBase):
+    """Simultaneous ranking results."""
+
+    _default_title = "Simultaneous ranking"
+
+    def __init__(self, model: SimultaneousRanking, *args: Any, **kwargs: Any):
+        super().__init__(model, *args, **kwargs)
+        self.params = (-model.mean).argsort().argsort() + 1
+        pairwise_model = PairwiseComparison(model.mean, model.cov)
+        self._pairwise_comparison = pairwise_model.fit()
+
+        # compute test statistics for finding the top tau parameters
+        # self._test_stats is a (# params, # params) matrix where
+        # `self._test_stats[tau, k]`` is the test statistic for the null hypothesis that
+        # the parameter k is not in the top tau parameters
+        indices = np.triu_indices(model.n_params, 1)
+        self._test_stats = np.full((model.n_params, model.n_params), 0.0)
+        test_stats = pairwise_model.mean / np.sqrt(pairwise_model.cov.diagonal())
+        self._test_stats[indices] = -test_stats
+        self._test_stats[(indices[1], indices[0])] = test_stats
+        self._test_stats = np.sort(self._test_stats, 0)[::-1]
+
+        # compute random values to find the critical values for finding the top tau
+        # parameters
+        # self._rvs is a (# samples, # params, # params) matrix where
+        # `self._rvs[n, k, l]`` is the nth sample of the studentized param_k - param_l
+        def reshape(arr):
+            arr = arr[: int(len(arr) / 2)]
+            matrix = np.zeros((model.n_params, model.n_params))
+            matrix[indices] = arr
+            matrix[(indices[1], indices[0])] = -arr
+            return matrix
+
+        self._rvs = np.apply_along_axis(reshape, -1, self._pairwise_comparison._rvs)
+
+    def _conf_int(self, alpha: float, indices: np.ndarray) -> np.ndarray:
+        hypothesis_matrix = self._pairwise_comparison.test_hypotheses(alpha).values
+        return np.array(
+            [
+                hypothesis_matrix.sum(axis=1),
+                self.model.n_params - hypothesis_matrix.sum(axis=0) - 1,
+            ]
+        ).T[indices] + 1
+
+    def compute_best_params(
+        self, n_best_params: int = 1, alpha: float = 0.05, superset: bool = True
+    ) -> pd.Series:
+        """Compute the set of best (largest) parameters.
+
+        Find the set of parameters such that the truly best ``n_best_params`` parameters
+        are in this set with probability ``1-alpha``. Or, find the set of parameters
+        such that these parameters are in the truly best ``n_best_params`` parameters
+        with probability ``1-alpha``.
+
+        Args:
+            n_best_params (int, optional): Number of best parameters. Defaults to 1.
+            alpha (float, optional): Significance level. Defaults to 0.05.
+            superset (bool, optional): Indicates that the returned set is a superset of
+                the truly best n parameters. If False, the returned set is a subset of
+                the truly best n parameters. Defaults to True.
+
+        Returns:
+            pd.Series: Indicates which parameters are in the selected set.
+        """
+        if superset:
+            test_stats = self._test_stats[n_best_params - 1]
+        else:
+            test_stats = -self._test_stats[n_best_params]
+            n_best_params = self.model.n_params - n_best_params
+
+        subsets = []
+        for indices in combinations(np.arange(self.model.n_params), n_best_params - 1):
+            arr = np.full(self.model.n_params, True)
+            if len(indices) > 0:
+                arr[list(indices)] = False
+
+            subsets.append(arr)
+
+        compute_critical_value = lambda subset: np.quantile(
+            rvs[:, :, subset].max(axis=(1, 2)), 1 - alpha
+        )
+        rejected, newly_rejected = np.full(self.model.n_params, False), None
+        while newly_rejected is None or (newly_rejected.any() and not rejected.all()):
+            rvs = self._rvs[:, ~rejected]
+            critical_value = max([compute_critical_value(subset) for subset in subsets])
+            newly_rejected = (test_stats > critical_value) & ~rejected
+            rejected = newly_rejected | rejected
+
+        return pd.Series(
+            ~rejected if superset else rejected, index=self.model.exog_names
+        )
+
+    def _make_summary_header(self, alpha: float) -> list[str]:
+        return [
+            "rank (conventional)",
+            "pvalue",
+            f"{1-alpha} CI lower",
+            f"{1-alpha} CI upper",
+        ]
+
+
+class SimultaneousRanking(ConfidenceSet):
+    """Estimate rankings with simultaneous confidence intervals.
+
+    Subclasses :class:`ConfidenceSet`.
+
+    Examples:
+
+        .. testcode::
+
+            import numpy as np
+            from conditional_inference.confidence_set import SimultaneousRanking
+
+            x = np.arange(3)
+            cov = np.identity(3) / 10
+            model = SimultaneousRanking(x, cov)
+            results = model.fit()
+            print(results.summary())
+
+        .. testoutput::
+            :options: -ELLIPSIS, +NORMALIZE_WHITESPACE
+
+                               Simultaneous ranking
+            =========================================================
+               rank (conventional) pvalue 0.95 CI lower 0.95 CI upper
+            ---------------------------------------------------------
+            x0               2.000    nan         1.000         2.000
+            x1               1.000    nan         0.000         2.000
+            x2               0.000    nan         0.000         1.000
+            ===============
+            Dep. Variable y
+            ---------------
+
+        .. testcode::
+
+            print(results.compute_best_params())
+
+        .. testoutput::
+            :options: -ELLIPSIS, +NORMALIZE_WHITESPACE
+
+            x0    False
+            x1    False
+            x2     True
+            dtype: bool
+
+        This we can be 95% confident that the best (largest) parameter is x2.
+    """
+
+    _results_cls = SimultaneousRankingResults

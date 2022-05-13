@@ -1,16 +1,415 @@
-"""Statistical distributions
+"""Statistical distributions.
 """
 from __future__ import annotations
 
 import warnings
-from typing import Any, List, Tuple, Union
+from typing import Any, Callable, List, Sequence, Tuple, Union
 
 import numpy as np
+from scipy.integrate import quad
+from scipy.interpolate import interp1d
 from scipy.misc import derivative
-from scipy.stats import norm, rv_continuous, truncnorm as truncnorm_base
 from scipy.optimize import NonlinearConstraint, fsolve, minimize
+from scipy.stats import norm, rv_continuous, truncnorm as truncnorm_base
+
 
 from .base import Numeric1DArray
+from .utils import weighted_quantile
+
+
+class joint_distribution:
+    """Join distribution based on independent marginal distributions.
+
+    Args:
+        marginal_distributions (Sequence[rv_continuous]): Marginal distributions.
+    """
+
+    def __init__(self, marginal_distributions: Sequence[rv_continuous]):
+        self._marginal_distributions = list(marginal_distributions)
+
+    def logpdf(self, x: np.ndarray) -> np.ndarray:
+        """Log of the probability density function evaluated at ``x``.
+
+        Args:
+            x (np.ndarray): (n, # marginals) matrix of values at which to evaluate the
+                density function.
+
+        Returns:
+            np.ndarray: (n,) array of log density.
+        """
+        x = np.array(x).reshape(-1, len(self._marginal_distributions))
+        return np.sum([dist.logpdf(x_i) for dist, x_i in zip(self._marginal_distributions, x.T)], axis=0)
+
+    def pdf(self, x: np.ndarray) -> np.ndarray:
+        """Probability density function evaluated at ``x``.
+
+        Args:
+            x (np.ndarray): (n, # marginals) matrix of values at which to evaluate the
+                density function.
+
+        Returns:
+            np.ndarray: (n,) array of densities.
+        """
+        return np.exp(self.logpdf(x))
+
+    def rvs(self, size: int = 1) -> np.ndarray:
+        """Sample random values.
+
+        Args:
+            size (int, optional): Number of samples to draw. Defaults to 1.
+
+        Returns:
+            np.ndarray: (size, # marginals) matrix of samples.
+        """
+        return np.vstack(
+            [dist.rvs(size=size) for dist in self._marginal_distributions]
+        ).T
+
+
+class mixture(rv_continuous):
+    """Mixture distribution.
+
+    Args:
+        distributions (list[rv_continuous]): List of n distributions to mix over.
+        weights (Numeric1DArray, optional): (n,) array of mixture weights. Defaults to None.
+
+    Attributes:
+        distributions (list[rv_continuous]): Distributions to mix over.
+        weights (np.ndarray): Mixture weights.
+    """
+
+    def __init__(
+        self,
+        distributions: list[rv_continuous],
+        weights: Numeric1DArray = None,
+        **kwargs: Any,
+    ):
+
+        super().__init__(**kwargs)
+        self.distributions = distributions
+        self.weights = (
+            np.ones(len(distributions)) if weights is None else np.atleast_1d(weights)
+        )
+        self.weights /= self.weights.sum()
+
+    def _pdf(self, x):
+        return (
+            self.weights * np.array([dist.pdf(x) for dist in self.distributions]).T
+        ).sum(axis=1)
+
+    def _cdf(self, x):
+        return (
+            self.weights * np.array([dist.cdf(x) for dist in self.distributions]).T
+        ).sum(axis=1)
+
+    def mean(self):
+        return (
+            self.weights * np.array([dist.mean() for dist in self.distributions])
+        ).sum()
+
+    def var(self):
+        return (
+            self.weights * np.array([dist.var() for dist in self.distributions])
+        ).sum()
+
+    def std(self):
+        return np.sqrt(self.var())
+
+
+class nonparametric(rv_continuous):
+    """Nonparametric distribution.
+
+    Args:
+        values (tuple[np.array, np.array]): (n,) array of x values, (n,) array of the
+            probability mass function evaluated at x.
+        kind (str, optional): Type of interpolation to use. Passed to
+            ``scipy.interpolate.interp1d``. Defaults to None.
+
+    Attributes:
+        xk (np.ndarray): (n,) array of x values.
+        pk (np.ndarray): (n,) array of the probability mass function evaluated at x.
+
+    Notes:
+        This distribution interpolates between the probability mass function to
+        "continuize" the discrete function.
+    """
+
+    def __init__(self, values, kind=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.xk, self.pk = np.array(values[0], float), np.array(values[1], float)
+        self.pk /= self.pk.sum()
+        self._cdf_values = np.cumsum(self.pk)
+        if kind is not None:
+            self._kind = kind
+        else:
+            self._kind = "cubic" if len(self.xk) > 3 else "linear"
+        self._scale = 1
+        self._scale = 1 / quad(self._pdf, self.xk[0], self.xk[-1])[0]
+
+    def _pdf(self, x: np.ndarray) -> np.ndarray:
+        x = np.atleast_1d(x)
+        pdf = np.zeros(len(x))
+        in_range = (self.xk[0] < x) & (x < self.xk[-1])
+        pdf[in_range] = interp1d(self.xk, self.pk, kind=self._kind)(x[in_range])
+        return self._scale * pdf
+
+    def _cdf(self, x: np.ndarray) -> np.ndarray:
+        x = np.atleast_1d(x)
+        cdf = np.zeros(len(x))
+        cdf[x >= self.xk[-1]] = 1
+        in_range = (self.xk[0] < x) & (x < self.xk[-1])
+        cdf[in_range] = interp1d(self.xk, self._cdf_values, kind=self._kind)(
+            x[in_range]
+        )
+        return cdf
+
+    def _ppf(self, q: np.ndarray) -> np.ndarray:
+        return weighted_quantile(self.xk, q, self.pk)
+
+    def moment(self, func: Callable[[np.ndarray], np.ndarray]) -> float:
+        """Compute a moment.
+
+        Args:
+            func (Callable[[np.ndarray], np.ndarray]): Moment function that takes
+                ``self.xk`` and returns an array of the same shape.
+
+        Returns:
+            float: Moment.
+        """
+        return sum(self.pk * func(self.xk))
+
+    def mean(self) -> float:
+        """Compute the mean.
+
+        Returns:
+            float: Mean.
+        """
+        return self.moment(lambda x: x)
+
+    def var(self) -> float:
+        """Compute the variance.
+
+        Returns:
+            float: Variance.
+        """
+        mean = self.mean()
+        return self.moment(lambda x: (x - mean) ** 2)
+
+    def std(self) -> float:
+        """Compute the standard deviation.
+
+        Returns:
+            float: Standard deviation.
+        """
+        return np.sqrt(self.var())
+
+
+class quantile_unbiased(rv_continuous):  # pylint: disable=invalid-name
+    """Conditional quantile-unbiased distribution.
+
+    Inherits from `scipy.stats.rv_continuous <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.rv_continuous.html>`_
+    and handles standard public methods (``pdf``, ``cdf``, etc.).
+
+    Args:
+        y (float): Value at which the truncated CDF is evaluated
+        projection_interval (Union[float, Tuple[float, float]], optional): Lower and
+            upper bounds of the projection confidence interval. Defaults to
+            (-np.inf, np.inf).
+        bounds (Tuple[float, float], optional): Lower and upper bounds of the support
+            of the distribution. Defaults to (-np.inf, np.inf).
+        dx (float): Used to numerically approximate the PDF.
+        **truncnorm_kwargs (Any): Keyword arguments for :class:`truncnorm`.
+
+    Attributes:
+        y (float): Value at which the truncated CDF is evaluated.
+        bounds (Tuple[float, float]): Lower and upper bound of the support of the
+            distribution.
+        dx (float): Used to numerically approximate the PDF.
+        truncnorm_kwargs (dict): Keyword arguments for :class:`truncnorm`.
+
+    Examples:
+        Compute a median-unbiased estimate of a normally distributed variable given
+            that its observed value is 1 and falls between 0 and 3.
+
+        .. doctest::
+
+            >>> from conditional_inference.stats import quantile_unbiased
+            >>> dist = quantile_unbiased(1, truncation_set=[(0, 3)])
+            >>> dist.ppf(.5)
+            0.7108033900602351
+    """
+
+    def __init__(
+        self,
+        y: float,
+        projection_interval: Union[float, Tuple[float, float]] = (-np.inf, np.inf),
+        bounds: Tuple[float, float] = (-np.inf, np.inf),
+        dx: float = None,
+        **truncnorm_kwargs: Any,
+    ):
+        super().__init__()
+        self.y = y  # pylint: disable=invalid-name
+        if np.isscalar(projection_interval):
+            projection_interval = abs(projection_interval)  # type: ignore
+            projection_interval = (-projection_interval, projection_interval)
+        self.projection_interval = tuple(projection_interval)
+        self.bounds = bounds
+        self.truncnorm_kwargs = truncnorm_kwargs
+        self.dx = dx
+
+        self._cdf_min: float = (
+            0  # type: ignore
+            if bounds[0] == -np.inf
+            else 1 - self._truncated_cdf(np.array([bounds[0]]))
+        )
+        if self._cdf_min >= 1:
+            warnings.warn(
+                "Untruncated CDF of lower bound == 1: try decreasing the lower bound",
+                RuntimeWarning,
+            )
+        self._cdf_max: float = (
+            1  # type: ignore
+            if bounds[1] == np.inf
+            else 1 - self._truncated_cdf(np.array([bounds[1]]))
+        )
+        if self._cdf_max <= 0:
+            warnings.warn(
+                "Untruncated CDF of upper bound == 0: try increasing the upper bound",
+                RuntimeWarning,
+            )
+
+    @property
+    def dx(self):  # pylint: disable=missing-docstring
+        # create a default dx value if this property has not yet been set
+        if self._dx is None:
+            self.dx = np.diff(self.ppf([0.95, 0.05])) / 50
+        return self._dx
+
+    @dx.setter
+    def dx(self, value):
+        self._dx = value
+
+    @property
+    def bounds(self):  # pylint: disable=missing-docstring
+        # Potentially restrict the bounds of this distribution to ensure the truncation
+        # set and # projection interval overlap
+        truncation_set = self.truncnorm_kwargs.get("truncation_set")
+        if truncation_set is None or self.projection_interval == (-np.inf, np.inf):
+            return self._bounds
+
+        a, b = zip(*truncation_set)  # pylint: disable=invalid-name
+        return (
+            max(self._bounds[0], np.min(a) - self.projection_interval[1]),
+            min(self._bounds[1], np.max(b) - self.projection_interval[0]),
+        )
+
+    @bounds.setter
+    def bounds(self, bounds):
+        self._bounds = bounds
+
+    def _truncated_cdf(  # pylint: disable=invalid-name
+        self, x: np.ndarray
+    ) -> np.ndarray:
+        """Compute the truncated CDF evaluated at ``self.y`` with shift ``x``."""
+
+        def truncated_cdf(x_i):
+            # get the intersection of the truncation set and the projection confidence
+            # interval centered on x_i
+            intersection = []
+            for interval in truncation_set:
+                clipped_interval = (
+                    float(max(interval[0], x_i + self.projection_interval[0])),
+                    float(min(interval[1], x_i + self.projection_interval[1])),
+                )
+                if clipped_interval[0] < clipped_interval[1]:
+                    interval = (
+                        normalize(clipped_interval[0], x_i),
+                        normalize(clipped_interval[1], x_i),
+                    )
+                    intersection.append(interval)
+
+            return truncnorm(intersection, loc=x_i, **truncnorm_kwargs).cdf(self.y)
+
+        def normalize(value, loc):
+            return (value - loc) / scale
+
+        truncation_set = self.truncnorm_kwargs.get("truncation_set")
+        scale = self.truncnorm_kwargs.get("scale", 1)
+        truncnorm_kwargs = {
+            key: value
+            for key, value in self.truncnorm_kwargs.items()
+            if key != "truncation_set"
+        }
+        rval = np.array([truncated_cdf(x_i) for x_i in x])
+        return rval[0] if len(rval) == 1 else rval
+
+    def _cdf(self, x: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
+        """Cumulative distribution function.
+
+        Args:
+            x (np.ndarray): (n,) array of values at which to evaluate the CDF.
+
+        Returns:
+            np.ndarray: (n,) array of evaluations.
+        """
+        if self._cdf_min >= 1 or self._cdf_max <= 0:
+
+            def handle_cdf_out_of_bounds(x_i):
+                return self.bounds[0] <= x_i if self.y < x_i else self.bounds[1] < x_i
+
+            warnings.warn(
+                "Untruncated CDF of lower bound >= 1 or CDF of upper bound <= 0"
+            )
+            return np.array([handle_cdf_out_of_bounds(x_i) for x_i in x]).astype(float)
+
+        cdf = (1 - self._truncated_cdf(x) - self._cdf_min) / (
+            self._cdf_max - self._cdf_min
+        )
+        return ((self.bounds[0] < x) & (x < self.bounds[1])) * cdf + (
+            self.bounds[1] <= x
+        ).astype(float)
+
+    def _pdf(self, x: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
+        """Probability density function.
+
+        Args:
+            x (np.ndarray): (n,) array of values at which to evaluate the PDF.
+
+        Returns:
+            np.ndarray: (n,) array of evaluations.
+        """
+        pdf = derivative(self._cdf, x, dx=self.dx, order=5)
+        return ((self.bounds[0] < x) & (x < self.bounds[1])) * pdf
+
+    def _ppf(self, q: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
+        """See self.ppf."""
+
+        def func(mu, q_i):
+            return self._truncated_cdf(mu) - (1 - q_i)
+
+        if self._cdf_min >= 1 or self._cdf_max <= 0:
+            warnings.warn(
+                "Untruncated CDF of lower bound >= 1 or CDF of upper bound <= 0"
+            )
+
+            value = self.bounds[0] if self.bounds[0] > self.y else self.bounds[1]
+            return np.full(q.shape, value)
+
+        q_t = np.atleast_1d(q) * (self._cdf_max - self._cdf_min) + self._cdf_min
+        return np.array([fsolve(func, [self.y], args=(q_i,))[0] for q_i in q_t])
+
+    def ppf(  # pylint: disable=arguments-differ
+        self, q: Union[float, Numeric1DArray]
+    ) -> np.ndarray:
+        """Percent point function.
+
+        Args:
+            q (np.ndarray): (n,) array of quantiles at which to evaluate the PPF.
+
+        Returns:
+            np.ndarray: (n,) array of evaluations.
+        """
+        return np.clip(super().ppf(q), *self.bounds)
 
 
 class truncnorm(rv_continuous):  # pylint: disable=invalid-name
@@ -242,211 +641,3 @@ class truncnorm(rv_continuous):  # pylint: disable=invalid-name
 
     def _normalize(self, arr):
         return (arr - self.loc) / self.scale
-
-
-class quantile_unbiased(rv_continuous):  # pylint: disable=invalid-name
-    """Conditional quantile-unbiased distribution.
-
-    Inherits from `scipy.stats.rv_continuous <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.rv_continuous.html>`_
-    and handles standard public methods (``pdf``, ``cdf``, etc.).
-
-    Args:
-        y (float): Value at which the truncated CDF is evaluated
-        projection_interval (Union[float, Tuple[float, float]], optional): Lower and
-            upper bounds of the projection confidence interval. Defaults to
-            (-np.inf, np.inf).
-        bounds (Tuple[float, float], optional): Lower and upper bounds of the support
-            of the distribution. Defaults to (-np.inf, np.inf).
-        dx (float): Used to numerically approximate the PDF.
-        **truncnorm_kwargs (Any): Keyword arguments for :class:`truncnorm`.
-
-    Attributes:
-        y (float): Value at which the truncated CDF is evaluated.
-        bounds (Tuple[float, float]): Lower and upper bound of the support of the
-            distribution.
-        dx (float): Used to numerically approximate the PDF.
-        truncnorm_kwargs (dict): Keyword arguments for :class:`truncnorm`.
-
-    Examples:
-        Compute a median-unbiased estimate of a normally distributed variable given
-            that its observed value is 1 and falls between 0 and 3.
-
-        .. doctest::
-
-            >>> from conditional_inference.stats import quantile_unbiased
-            >>> dist = quantile_unbiased(1, truncation_set=[(0, 3)])
-            >>> dist.ppf(.5)
-            0.7108033900602351
-    """
-
-    def __init__(
-        self,
-        y: float,
-        projection_interval: Union[float, Tuple[float, float]] = (-np.inf, np.inf),
-        bounds: Tuple[float, float] = (-np.inf, np.inf),
-        dx: float = None,
-        **truncnorm_kwargs: Any,
-    ):
-        super().__init__()
-        self.y = y  # pylint: disable=invalid-name
-        if np.isscalar(projection_interval):
-            projection_interval = abs(projection_interval)  # type: ignore
-            projection_interval = (-projection_interval, projection_interval)
-        self.projection_interval = projection_interval
-        self.bounds = bounds
-        self.truncnorm_kwargs = truncnorm_kwargs
-        self.dx = dx
-
-        self._cdf_min: float = (
-            0  # type: ignore
-            if bounds[0] == -np.inf
-            else 1 - self._truncated_cdf(np.array([bounds[0]]))
-        )
-        if self._cdf_min >= 1:
-            warnings.warn(
-                "Untruncated CDF of lower bound == 1: try decreasing the lower bound",
-                RuntimeWarning,
-            )
-        self._cdf_max: float = (
-            1  # type: ignore
-            if bounds[1] == np.inf
-            else 1 - self._truncated_cdf(np.array([bounds[1]]))
-        )
-        if self._cdf_max <= 0:
-            warnings.warn(
-                "Untruncated CDF of upper bound == 0: try increasing the upper bound",
-                RuntimeWarning,
-            )
-
-    @property
-    def dx(self):  # pylint: disable=missing-docstring
-        # create a default dx value if this property has not yet been set
-        if self._dx is None:
-            self.dx = np.diff(self.ppf([0.95, 0.05])) / 50
-        return self._dx
-
-    @dx.setter
-    def dx(self, value):
-        self._dx = value
-
-    @property
-    def bounds(self):  # pylint: disable=missing-docstring
-        # Potentially restrict the bounds of this distribution to ensure the truncation
-        # set and # projection interval overlap
-        truncation_set = self.truncnorm_kwargs.get("truncation_set")
-        if truncation_set is None or self.projection_interval == (-np.inf, np.inf):
-            return self._bounds
-
-        a, b = zip(*truncation_set)  # pylint: disable=invalid-name
-        return (
-            max(self._bounds[0], np.min(a) - self.projection_interval[1]),
-            min(self._bounds[1], np.max(b) - self.projection_interval[0]),
-        )
-
-    @bounds.setter
-    def bounds(self, bounds):
-        self._bounds = bounds
-
-    def _truncated_cdf(  # pylint: disable=invalid-name
-        self, x: np.ndarray
-    ) -> np.ndarray:
-        """Compute the truncated CDF evaluated at ``self.y`` with shift ``x``."""
-
-        def truncated_cdf(x_i):
-            # get the intersection of the truncation set and the projection confidence
-            # interval centered on x_i
-            intersection = []
-            for interval in truncation_set:
-                clipped_interval = (
-                    float(max(interval[0], x_i + self.projection_interval[0])),
-                    float(min(interval[1], x_i + self.projection_interval[1])),
-                )
-                if clipped_interval[0] < clipped_interval[1]:
-                    interval = (
-                        normalize(clipped_interval[0], x_i),
-                        normalize(clipped_interval[1], x_i),
-                    )
-                    intersection.append(interval)
-
-            return truncnorm(intersection, loc=x_i, **truncnorm_kwargs).cdf(self.y)
-
-        def normalize(value, loc):
-            return (value - loc) / scale
-
-        truncation_set = self.truncnorm_kwargs.get("truncation_set")
-        scale = self.truncnorm_kwargs.get("scale", 1)
-        truncnorm_kwargs = {
-            key: value
-            for key, value in self.truncnorm_kwargs.items()
-            if key != "truncation_set"
-        }
-        rval = np.array([truncated_cdf(x_i) for x_i in x])
-        return rval[0] if len(rval) == 1 else rval
-
-    def _cdf(self, x: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
-        """Cumulative distribution function.
-
-        Args:
-            x (np.ndarray): (n,) array of values at which to evaluate the CDF.
-
-        Returns:
-            np.ndarray: (n,) array of evaluations.
-        """
-        if self._cdf_min >= 1 or self._cdf_max <= 0:
-
-            def handle_cdf_out_of_bounds(x_i):
-                return self.bounds[0] <= x_i if self.y < x_i else self.bounds[1] < x_i
-
-            warnings.warn(
-                "Untruncated CDF of lower bound >= 1 or CDF of upper bound <= 0"
-            )
-            return np.array([handle_cdf_out_of_bounds(x_i) for x_i in x]).astype(float)
-
-        cdf = (1 - self._truncated_cdf(x) - self._cdf_min) / (
-            self._cdf_max - self._cdf_min
-        )
-        return ((self.bounds[0] < x) & (x < self.bounds[1])) * cdf + (
-            self.bounds[1] <= x
-        ).astype(float)
-
-    def _pdf(self, x: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
-        """Probability density function.
-
-        Args:
-            x (np.ndarray): (n,) array of values at which to evaluate the PDF.
-
-        Returns:
-            np.ndarray: (n,) array of evaluations.
-        """
-        pdf = derivative(self._cdf, x, dx=self.dx, order=5)
-        return ((self.bounds[0] < x) & (x < self.bounds[1])) * pdf
-
-    def _ppf(self, q: np.ndarray) -> np.ndarray:  # pylint: disable=arguments-differ
-        """See self.ppf."""
-
-        def func(mu, q_i):
-            return self._truncated_cdf(mu) - (1 - q_i)
-
-        if self._cdf_min >= 1 or self._cdf_max <= 0:
-            warnings.warn(
-                "Untruncated CDF of lower bound >= 1 or CDF of upper bound <= 0"
-            )
-
-            value = self.bounds[0] if self.bounds[0] > self.y else self.bounds[1]
-            return np.full(q.shape, value)
-
-        q_t = np.atleast_1d(q) * (self._cdf_max - self._cdf_min) + self._cdf_min
-        return np.array([fsolve(func, [self.y], args=(q_i,))[0] for q_i in q_t])
-
-    def ppf(  # pylint: disable=arguments-differ
-        self, q: Union[float, Numeric1DArray]
-    ) -> np.ndarray:
-        """Percent point function.
-
-        Args:
-            q (np.ndarray): (n,) array of quantiles at which to evaluate the PPF.
-
-        Returns:
-            np.ndarray: (n,) array of evaluations.
-        """
-        return np.clip(super().ppf(q), *self.bounds)

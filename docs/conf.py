@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath('../src')) # necessary to run `make doctest` 
 
 # -- Project information -----------------------------------------------------
 
-project = 'Conditional Inference'
+project = 'Multiple Inference'
 copyright = "2021, Dillon Bowen"
 author = 'Dillon Bowen'
 
@@ -51,6 +51,12 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
 ]
+
+# doctest setup
+doctest_global_setup = """
+import numpy as np
+np.random.seed(0)
+"""
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

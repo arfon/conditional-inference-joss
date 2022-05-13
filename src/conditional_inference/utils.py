@@ -1,11 +1,10 @@
-"""Conditional inference utilities
+"""Conditional inference utilities.
 """
-from multiprocessing.sharedctypes import Value
 from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
-from scipy.stats import multivariate_normal, norm, wasserstein_distance
+from scipy.stats import multivariate_normal, wasserstein_distance
 from statsmodels.base.model import LikelihoodModelResults
 
 Numeric1DArray = Sequence[float]
@@ -16,56 +15,6 @@ def _get_sample_weight(sample_weight: Optional[np.ndarray], shape: int) -> np.nd
         sample_weight = np.ones(shape)
     sample_weight = np.array(sample_weight)
     return sample_weight / sample_weight.sum()
-
-
-def compute_projection_rvs(
-    cov: np.array, size: int = 1, random_state: int = None
-) -> np.ndarray:
-    """Sample random values to construct projection confidence intervals.
-
-    Args:
-        cov (np.array): (# policies, # policies) covariance matrix.
-        size (int, optional): Number of samples. Defaults to 1.
-        random_state (int, optional): Random state passed to
-            ``scipy.stats.multivariate_normal``. Defaults to None.
-
-    Returns:
-        np.ndarray: (size, 2) array of samples.
-    """
-    rvs = multivariate_normal.rvs(
-        np.zeros(cov.shape[0]), cov, size=size, random_state=random_state
-    )
-    if len(rvs.shape) == 1:
-        rvs = np.atleast_2d(rvs).T
-    rvs /= np.sqrt(cov.diagonal())
-    return np.array([rvs.min(axis=1), rvs.max(axis=1)]).T
-
-
-def compute_projection_quantile(
-    cov: np.array,
-    alpha: float = 0.05,
-    n_samples: int = 10000,
-    random_state: int = None,
-) -> float:
-    """Compute the 1-alpha quantile for projection confidence intervals.
-
-    Args:
-        cov (np.array): (# policies, # policies) covariance matrix.
-        alpha (float, optional): Quantile level of the projection CI. Defaults to 0.05.
-        n_samples (int, optional): Number of samples used in approximating the 1-alpha
-            quantile. Defaults to 10000.
-        random_state (int, optional): Random state passed to
-            ``scipy.stats.multivariate_normal``. Defaults to None.
-
-    Returns:
-        float: 1-alpha quantile of the projection CI.
-    """
-    if alpha == 0:
-        return np.inf
-    if cov.shape[0] == 1:
-        return norm.ppf(1 - alpha, 0, np.sqrt(cov))[0]
-    rvs = compute_projection_rvs(cov, size=n_samples, random_state=random_state)
-    return np.quantile(abs(rvs).max(axis=1), 1 - alpha)
 
 
 def expected_wasserstein_distance(
@@ -82,8 +31,8 @@ def expected_wasserstein_distance(
     estimated population means ``estimated_means``.
 
     Args:
-        mean (Numeric1DArray): (n,) array of observed sample means.
-        cov (np.ndarray): (n, n) covariance matrix of sample means.
+        mean (Numeric1DArray): (n,) array of conventional point estimates.
+        cov (np.ndarray): (n, n) covariance matrix of conventional estimates.
         estimated_means (np.ndarray): (# samples, n) matrix of draws from
             a distribution of population means.
         sample_weight (np.ndarray, optional): (# samples,) array of sample weights for
@@ -93,12 +42,10 @@ def expected_wasserstein_distance(
     Returns:
         float: Loss.
     """
-
-    def compute_distance(estimated_mean):
-        dist = multivariate_normal(estimated_mean, cov)
-        return wasserstein_distance(dist.rvs(), mean, **kwargs)
-
     sample_weight = _get_sample_weight(sample_weight, estimated_means.shape[0])
+    compute_distance = lambda mu: wasserstein_distance(
+        multivariate_normal.rvs(mu, cov), mean, **kwargs
+    )
     distances = np.apply_along_axis(compute_distance, 1, estimated_means)
     return (sample_weight * distances).sum()
 
@@ -119,10 +66,6 @@ def holm_bonferroni_correction(
 
     Returns:
         pd.DataFrame: Dataframe indicating which coefficients are significant.
-
-    Notes:
-        If you input a ``filename``, this correction looks at one-tailed hypothesis
-        tests.
     """
     if filename is None and results is None:
         raise ValueError("filename or results must be specified.")
@@ -131,13 +74,17 @@ def holm_bonferroni_correction(
         raise ValueError("Please specify either filename or results; not both.")
 
     if results is None:
-        from .bayes.classic import LinearClassicBayes
+        from .bayes import Improper
 
-        results = LinearClassicBayes.from_csv(filename, prior_cov=np.inf).fit()
+        results = Improper.from_csv(filename).fit()
+        # Improper gives pvalues for 1-tailed tests
+        pvalues = np.min(np.array([2 * results.pvalues, 2 * (1 - results.pvalues)]), axis=0)
+    else:
+        pvalues = results.pvalues
 
-    argsort = results.pvalues.argsort()
+    argsort = pvalues.argsort()
     df = pd.DataFrame(
-        {"pvalues": results.pvalues[argsort]},
+        {"pvalues": pvalues[argsort]},
         index=np.array(results.model.exog_names)[argsort],
     )
     index = np.where(df.pvalues > alpha / (len(df) - np.arange(len(df))))[0][0]
@@ -181,21 +128,3 @@ def weighted_quantile(
 
     weighted_quantiles = np.cumsum(sample_weight) - 0.5 * sample_weight  # type: ignore
     return np.interp(quantiles, weighted_quantiles, values)
-
-
-def weighted_cdf(
-    values: np.ndarray, x: float, sample_weight: np.ndarray = None
-) -> float:
-    """Compute weighted CDF.
-
-    Args:
-        values (np.ndarray): (n,) array over which to compute the CDF.
-        x (float): Point at which to evaluate the CDF.
-        sample_weight (np.ndarray, optional): (n,) array of sample weights. Defaults to
-            None.
-
-    Returns:
-        float: CDF of ``values`` evaluated at ``x``.
-    """
-    sample_weight = _get_sample_weight(sample_weight, len(values))
-    return (sample_weight * (np.array(values) < x)).sum()

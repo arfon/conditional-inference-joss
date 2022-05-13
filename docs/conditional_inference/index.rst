@@ -11,15 +11,22 @@ API reference
 
 .. toctree::
    :maxdepth: 2
-   :caption: Quantile unbiased inference
+   :caption: Confidence sets and ranking
 
-   Quantile-unbiased estimator <rqu>
+   Simultaneous confidence sets <confidence_set>
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Conditional inference
+
+   Ranking conditions <rank_condition>
+   Significance conditions <significance_condition>
 
 .. toctree::
    :maxdepth: 2
    :caption: Bayesian inference
 
    Base classes <bayes/base>
-   Classic <bayes/classic>
-   Empirical <bayes/empirical>
-   Hierarchical <bayes/hierarchical>
+   Improper prior <bayes/improper>
+   Normal prior <bayes/normal>
+   Nonparametric prior <bayes/nonparametric>

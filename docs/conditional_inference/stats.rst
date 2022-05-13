@@ -17,8 +17,12 @@ conditional\_inference.stats
 
    .. autosummary::
    
-      truncnorm
+      joint_distribution
+      mixture
+      nonparametric
       quantile_unbiased
+      truncnorm
+      
    
    
 
