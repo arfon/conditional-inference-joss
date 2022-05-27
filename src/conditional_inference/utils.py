@@ -78,7 +78,9 @@ def holm_bonferroni_correction(
 
         results = Improper.from_csv(filename).fit()
         # Improper gives pvalues for 1-tailed tests
-        pvalues = np.min(np.array([2 * results.pvalues, 2 * (1 - results.pvalues)]), axis=0)
+        pvalues = np.min(
+            np.array([2 * results.pvalues, 2 * (1 - results.pvalues)]), axis=0
+        )
     else:
         pvalues = results.pvalues
 

@@ -38,7 +38,10 @@ class joint_distribution:
             np.ndarray: (n,) array of log density.
         """
         x = np.array(x).reshape(-1, len(self._marginal_distributions))
-        return np.sum([dist.logpdf(x_i) for dist, x_i in zip(self._marginal_distributions, x.T)], axis=0)
+        return np.sum(
+            [dist.logpdf(x_i) for dist, x_i in zip(self._marginal_distributions, x.T)],
+            axis=0,
+        )
 
     def pdf(self, x: np.ndarray) -> np.ndarray:
         """Probability density function evaluated at ``x``.

@@ -25,6 +25,11 @@ A statistics package for comparing multiple parameters (e.g., multiple treatment
    :target: https://github.com/psf/black
 
 |
+Motivation
+==========
+
+Multiple inference techniques outperform standard methods like OLS and IV estimation for comparing multiple parameters. For example, `this post <https://gitlab.com/dsbowen/conditional-inference/-/blob/master/examples/bayes_primer.ipynb>_` shows how to apply Bayesian estimators to a randomized control trial testing many interventions to increase vaccination rates.
+
 Start here
 ==========
 
@@ -48,6 +53,11 @@ Installation
 .. code-block::
 
    $ pip install conditional-inference
+
+Issues
+======
+
+Please submit issues `here <https://gitlab.com/dsbowen/conditional-inference/-/issues>_`.
 
 Contents
 ========
@@ -81,3 +91,5 @@ Acknowledgements
 ================
 
 I would like to thank Isaiah Andrews, Toru Kitagawa, Adam McCloskey, and Jeff Rowley for invaluable feedback on my early drafts.
+
+My issue templates are based on the `statsmodels <https://github.com/statsmodels/statsmodels/issues/new/choose>_` issue templates.

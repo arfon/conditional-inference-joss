@@ -74,7 +74,11 @@ class BayesResults(ResultsBase):
                 for k in range(self.model.n_params)
             ]
         ).T
-        self.rank_df = pd.DataFrame(rank_matrix, columns=self.model.exog_names, index=np.arange(1, self.model.n_params+1))
+        self.rank_df = pd.DataFrame(
+            rank_matrix,
+            columns=self.model.exog_names,
+            index=np.arange(1, self.model.n_params + 1),
+        )
         self.rank_df.index.name = "Rank"
 
         self._reconstructed_rvs = np.apply_along_axis(
@@ -138,7 +142,8 @@ class BayesResults(ResultsBase):
             cov = self.model.cov
 
         return (
-            self._sample_weight * multivariate_normal.pdf(self._posterior_rvs, mean, cov)
+            self._sample_weight
+            * multivariate_normal.pdf(self._posterior_rvs, mean, cov)
         ).sum()
 
     def line_plot(

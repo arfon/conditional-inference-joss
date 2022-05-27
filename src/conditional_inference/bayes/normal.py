@@ -302,10 +302,14 @@ class Normal(BayesBase):
 
     def _get_joint_prior(self, indices: np.ndarray):
         return multivariate_normal(
-            self.prior_mean[indices], self.prior_cov[indices][:, indices], allow_singular=True
+            self.prior_mean[indices],
+            self.prior_cov[indices][:, indices],
+            allow_singular=True,
         )
 
     def _get_joint_distribution(self, indices: np.ndarray):
         return multivariate_normal(
-            self.posterior_mean[indices], self.posterior_cov[indices][:, indices], allow_singular=True
+            self.posterior_mean[indices],
+            self.posterior_cov[indices][:, indices],
+            allow_singular=True,
         )

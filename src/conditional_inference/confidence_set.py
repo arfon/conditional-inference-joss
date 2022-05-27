@@ -500,7 +500,9 @@ class MarginalRankingResults(ResultsBase):
             hypotheses_count = results.test_hypotheses(alpha).sum(axis=0)
             return [hypotheses_count[0], self.model.n_params - hypotheses_count[1] - 1]
 
-        return np.array([get_rank_ci(self._baseline_comparisons[i]) for i in indices]) + 1
+        return (
+            np.array([get_rank_ci(self._baseline_comparisons[i]) for i in indices]) + 1
+        )
 
     def _make_summary_header(self, alpha: float) -> list[str]:
         return [
@@ -585,12 +587,15 @@ class SimultaneousRankingResults(ResultsBase):
 
     def _conf_int(self, alpha: float, indices: np.ndarray) -> np.ndarray:
         hypothesis_matrix = self._pairwise_comparison.test_hypotheses(alpha).values
-        return np.array(
-            [
-                hypothesis_matrix.sum(axis=1),
-                self.model.n_params - hypothesis_matrix.sum(axis=0) - 1,
-            ]
-        ).T[indices] + 1
+        return (
+            np.array(
+                [
+                    hypothesis_matrix.sum(axis=1),
+                    self.model.n_params - hypothesis_matrix.sum(axis=0) - 1,
+                ]
+            ).T[indices]
+            + 1
+        )
 
     def compute_best_params(
         self, n_best_params: int = 1, alpha: float = 0.05, superset: bool = True
