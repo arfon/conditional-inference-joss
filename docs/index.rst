@@ -28,7 +28,7 @@ A statistics package for comparing multiple parameters (e.g., multiple treatment
 Motivation
 ==========
 
-Multiple inference techniques outperform standard methods like OLS and IV estimation for comparing multiple parameters. For example, `this post <https://gitlab.com/dsbowen/conditional-inference/-/blob/master/examples/bayes_primer.ipynb>_` shows how to apply Bayesian estimators to a randomized control trial testing many interventions to increase vaccination rates.
+Multiple inference techniques outperform standard methods like OLS and IV estimation for comparing multiple parameters. For example, `this post <https://gitlab.com/dsbowen/conditional-inference/-/blob/master/examples/bayes_primer.ipynb>`_ shows how to apply Bayesian estimators to a randomized control trial testing many interventions to increase vaccination rates.
 
 Start here
 ==========
@@ -57,7 +57,7 @@ Installation
 Issues
 ======
 
-Please submit issues `here <https://gitlab.com/dsbowen/conditional-inference/-/issues>_`.
+Please submit issues `here <https://gitlab.com/dsbowen/conditional-inference/-/issues>`_.
 
 Contents
 ========
@@ -80,11 +80,11 @@ Citations
 
 .. code-block::
 
-   @software(bowen2021conditional-inference,
-      title={ Conditional Inference },
+   @software(multiple-inference,
+      title={ Multiple Inference },
       author={ Bowen, Dillon },
-      year={ 2021 },
-      url={ https://dsbowen.gitlab.io/conditional-inference }
+      year={ 2022 },
+      url={ https://dsbowen-conditional-inference.readthedocs.io/en/latest/?badge=latest }
    )
 
 Acknowledgements
@@ -92,4 +92,4 @@ Acknowledgements
 
 I would like to thank Isaiah Andrews, Toru Kitagawa, Adam McCloskey, and Jeff Rowley for invaluable feedback on my early drafts.
 
-My issue templates are based on the `statsmodels <https://github.com/statsmodels/statsmodels/issues/new/choose>_` issue templates.
+My issue templates are based on the `statsmodels <https://github.com/statsmodels/statsmodels/issues/new/choose>`_ issue templates.

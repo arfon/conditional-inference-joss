@@ -8,4 +8,4 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gl/dsbowen%2Fconditional-inference/HEAD?urlpath=lab/tree/examples)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-A statistics package for comparing multiple parameters.
+A statistics package for comparing multiple parameters. Read the docs [here](https://dsbowen-conditional-inference.readthedocs.io/en/latest/?badge=latest).
