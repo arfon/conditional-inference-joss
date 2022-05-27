@@ -11,9 +11,16 @@ References:
             institution={ National Bureau of Economic Research }
         }
 
-        @article{andrewsinference,
-            title={Inference for Losers},
-            author={Andrews, Isaiah and Bowen, Dillon and Kitagawa, Toru and McCloskey, Adam}
+        @article{andrews2022inference,
+            Author = {Andrews, Isaiah and Bowen, Dillon and Kitagawa, Toru and McCloskey, Adam},
+            Title = {Inference for Losers},
+            Journal = {AEA Papers and Proceedings},
+            Volume = {112},
+            Year = {2022},
+            Month = {May},
+            Pages = {635-42},
+            DOI = {10.1257/pandp.20221065},
+            URL = {https://www.aeaweb.org/articles?id=10.1257/pandp.20221065}
         }
 """
 from __future__ import annotations
