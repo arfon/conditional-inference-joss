@@ -23,6 +23,15 @@ References:
             publisher={Springer}
         }
 
+        @article{bock1975minimax,
+            title={Minimax estimators of the mean of a multivariate normal distribution},
+            author={Bock, Mary Ellen},
+            journal={The Annals of Statistics},
+            pages={209--218},
+            year={1975},
+            publisher={JSTOR}
+        }
+
         @inproceedings{dimmery2019shrinkage,
             title={Shrinkage estimators in online experiments},
             author={Dimmery, Drew and Bakshy, Eytan and Sekhon, Jasjeet},
@@ -34,7 +43,7 @@ References:
 Notes:
 
     The James-Stein method of fitting the normal prior relies on my own fully Bayesian
-    derivation that extends Dimmery et al.'s derivation by 1) accounting for correlated
+    derivation that extends Dimmery et al. (2019)'s derivation by 1) accounting for correlated
     errors and 2) allowing the prior mean vector to depend on a feature matrix ``X``.
 """
 from __future__ import annotations
@@ -55,9 +64,9 @@ class Normal(BayesBase):
 
     Args:
         fit_method (Union[str, Callable[[], None]], optional): Specifies how to fit the
-            prior ("mle" or "james_stein"). You can also use a custom function that sets
-            the ``prior_mean``, ``prior_cov``, ``posterior_mean`` and ``posterior_cov``
-            attributes. Defaults to "mle".
+            prior ("mle", "bock", or "james_stein"). You can also use a custom function
+            that sets the ``prior_mean``, ``prior_cov``, ``posterior_mean`` and
+            ``posterior_cov`` attributes. Defaults to "mle".
         prior_mean (Union[float, np.ndarray], optional): (# params,) prior mean vector.
             Defaults to None.
         prior_cov (Union[float, np.ndarray], optional): (# params, # params) prior
@@ -117,7 +126,11 @@ class Normal(BayesBase):
             fit_method()
             self._set_posterior_estimates()
         else:
-            fit_methods = {"mle": self._fit_mle, "james_stein": self._fit_james_stein}
+            fit_methods = {
+                "mle": self._fit_mle,
+                "james_stein": self._fit_james_stein,
+                "bock": self._fit_bock,
+            }
             if fit_method not in fit_methods:
                 raise ValueError(
                     f"`fit_method` must be one of {fit_methods.keys()}, got {fit_method}."
@@ -135,12 +148,8 @@ class Normal(BayesBase):
         def neg_log_likelihood(prior_std):
             # negative log likelihood as a function of the prior standard deviation
             marginal_cov = prior_std ** 2 * np.identity(self.n_params) + self.cov
-            error = self.mean - prior_mean  # the prior mean is also the marginal mean
-            return 0.5 * (
-                self.n_params * np.log(math.tau)
-                + np.log(np.linalg.det(marginal_cov))
-                + error.T @ np.linalg.inv(marginal_cov) @ error
-            )
+            # note: the prior mean is also the marginal mean
+            return -multivariate_normal.logpdf(self.mean, prior_mean, marginal_cov)
 
         # use EM to iteratively update the prior mean and covariance
         prior_cov = (
@@ -172,6 +181,86 @@ class Normal(BayesBase):
                 prior_cov = result.x ** 2 * np.identity(self.n_params)
                 current_log_likelihood = -result.fun
 
+            if current_log_likelihood / prev_log_likelihood > rtol:
+                break
+            prev_log_likelihood = current_log_likelihood
+
+        # set the posterior mean and covariance estimates
+        # and adjust the prior and posterior covariances to account for uncertainty in the MLE estimate of the prior mean
+        prior_uncertainty = post_uncertainty = 0
+        if self.prior_mean is None:
+            marginal_cov_inv = np.linalg.inv(prior_cov + self.cov)
+            prior_uncertainty = (
+                self.X @ np.linalg.inv(self.X.T @ marginal_cov_inv @ self.X) @ self.X.T
+            )
+            xi = self.cov @ marginal_cov_inv
+            post_uncertainty = xi @ prior_uncertainty @ xi
+
+        self.prior_mean, self.prior_cov = prior_mean, prior_cov
+        self._set_posterior_estimates()  # note: set the posterior estimates *before* adjusting the prior covariance
+        self.prior_cov += prior_uncertainty
+        self.posterior_cov += post_uncertainty
+
+    def _fit_bock(self, max_iter: int = 100, rtol: float = 0.99) -> None:
+        """Fit the model using Bock (1975)'s multivariate Stein-type estimator.
+
+        Args:
+            max_iter (int, optional): Maximum number of iterations. Defaults to 100.
+            rtol (float, optional): Stopping criteria. Defaults to .99.
+
+        Raises:
+            RuntimeError: The shrinkage factor must be positve.
+        """
+        cov_inv = np.linalg.inv(self.cov)
+        prior_mean_df = self.X.shape[1] if self.prior_mean is None else 0
+        effective_dimension = np.trace(self.cov) / np.linalg.eig(self.cov)[0].max()
+        if effective_dimension - prior_mean_df - 2 < 0:
+            raise RuntimeError(
+                "Failed to fit the Bock (1975) estimator because the effective dimension"
+                " of the covariance matrix is too small. Try another fit method like"
+                " 'mle'."
+            )
+
+        xi = (
+            np.identity(self.n_params)
+            if self.prior_cov is None
+            else self.cov @ np.linalg.inv(self.cov + self.prior_cov)
+        )
+        current_log_likelihood, prev_log_likelihood = None, -np.inf
+        for _ in range(max_iter):
+            if self.prior_mean is None:
+                # update prior mean
+                marginal_cov_inv = cov_inv @ xi
+                prior_mean = (
+                    self.X
+                    @ np.linalg.inv(self.X.T @ marginal_cov_inv @ self.X)
+                    @ self.X.T
+                    @ marginal_cov_inv
+                    @ self.mean
+                )
+            else:
+                prior_mean = self.prior_mean
+
+            if self.prior_cov is None:
+                # update prior covariance
+                error = self.mean - prior_mean
+                param = min(
+                    (effective_dimension - prior_mean_df - 2)
+                    / (error.T @ cov_inv @ error),
+                    1,
+                )
+                xi = param * np.identity(self.n_params)
+            else:
+                prior_cov = self.prior_cov
+                # prior mean is computed analytically, so no need to iterate
+                break
+
+            # check for convergence
+            marginal_cov = np.linalg.inv(xi) @ self.cov
+            prior_cov = marginal_cov - self.cov
+            current_log_likelihood = multivariate_normal.logpdf(
+                self.mean, prior_mean, marginal_cov
+            )
             if current_log_likelihood / prev_log_likelihood > rtol:
                 break
             prev_log_likelihood = current_log_likelihood
@@ -236,6 +325,7 @@ class Normal(BayesBase):
             warnings.warn(
                 "The James-Stein prior covariance estimate is not positive semidefinite."
                 " Using the positive-part James-Stein covariance estimate instead."
+                " This may result in too little shrinkage."
             )
             bounds = [np.sqrt(s_squared), np.inf]
             for _ in range(max_iter):

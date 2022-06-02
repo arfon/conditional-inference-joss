@@ -14,7 +14,9 @@ X = np.vstack([np.ones(n_params), int(n_params / 2) * [0] + int(n_params / 2) * 
 mean = mean - mean.mean()
 
 
-@pytest.fixture(scope="module", params=product((None, X), ("mle", "james_stein")))
+@pytest.fixture(
+    scope="module", params=product((None, X), ("mle", "bock", "james_stein"))
+)
 def model(request):
     X, fit_method = request.param
     return Normal(mean, cov, X, fit_method=fit_method)
@@ -63,6 +65,18 @@ def test_conf_int(results):
     norm_len_ci = np.diff(norm.ppf([0.025, 0.975]))
     # test that Bayesian CIs are shorter than conventional CIs
     assert (np.diff(conf_int, axis=1) < norm_len_ci).all()
+
+
+def test_bock():
+    # can compute Bock's Stein-type estimates analytically
+    cov = 1.05 * np.identity(n_params) - 0.05
+    results = Normal(mean, cov, prior_mean=0, fit_method="bock").fit()
+    expected_result = (
+        1
+        - (np.trace(cov) / np.linalg.eig(cov)[0].max() - 2)
+        / (mean.reshape(1, -1) @ np.linalg.inv(cov) @ mean.reshape(-1, 1))
+    ) * mean
+    np.testing.assert_array_almost_equal(results.params, expected_result.squeeze())
 
 
 def test_james_stein():

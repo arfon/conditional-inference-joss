@@ -476,7 +476,7 @@ class ModelBase:
         if cols.dtype == np.dtype("float"):
             cols = cols.astype(int)
 
-        if cols.dtype == np.dtype(int):
+        if cols.dtype in (np.dtype(int), np.dtype("int64")):
             # cols is a sequence of indices
             return cols
 
