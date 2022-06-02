@@ -69,7 +69,7 @@ def test_conf_int(results):
 
 def test_bock():
     # can compute Bock's Stein-type estimates analytically
-    cov = 1.05 * np.identity(n_params) - 0.05
+    cov = np.identity(n_params)
     results = Normal(mean, cov, prior_mean=0, fit_method="bock").fit()
     expected_result = (
         1
